@@ -1,0 +1,39 @@
+
+module.exports = {
+
+
+   // COMMON
+  REQUIRED_FIELDS_MISSING: "Required fields missing",
+  SOMETHING_WENT_WRONG: "Something went wrong",
+
+  // PHONE
+  PHONE_LENGTH_INVALID: "Phone number must be 10 digits",
+  PHONE_ALREADY_REGISTERED: "Phone number already registered",
+
+  TOKEN_REQUIRED: "Token zaroori hai - pehle login karein",
+  TOKEN_INVALID: "Token galat hai ya expire ho gaya - dobara login karein",
+  LOGIN_SUCCESS: "Login successful",
+  LOGOUT_SUCCESS: "Logout successful",
+  USER_NOT_FOUND: "User nahi mila",
+  WRONG_PASSWORD: "Phone ya password galat hai",
+  PHONE_EXIST :"Phone number already exists",
+  LABOUR_CREATED_SUCCESS: "Labour created successfully",
+   REQUIRED_FIELDS_MISSING: "Required fields are missing",
+  PHONE_EXIST: "Phone number already exists",
+  LABOUR_UPDATED_SUCCESS: "Labour updated successfully",
+  LABOUR_NOT_FOUND: "Labour not found",
+  DATA_FOUND: "Data found successfully",
+  ID_REQUIRED: "Id is required",
+  INTERNAL_SERVER_ERROR: "Internal server error",
+  OWNER_CREATED_SUCCESSFULLY: "Owner successfully register hua",
+  OWNER_UPDATED_SUCCESSFULLY: "Owner successfully update hua",
+  OWNER_DELETED_SUCCESSFULLY: "Owner delete ho gaya",
+  PHONE_LENGTH_INVALID: "Phone number 10 digit ka hona chahiye",
+  PHONE_ALREADY_REGISTERED: "Phone number already registered hai",
+ 
+  // OWNER
+  OWNER_CREATED_SUCCESSFULLY: "Owner created successfully",
+  OWNER_UPDATED_SUCCESSFULLY: "Owner updated successfully",
+  OWNER_DELETED_SUCCESSFULLY: "Owner deleted successfully",
+  OWNER_NOT_FOUND: "Owner not found",
+};

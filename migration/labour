@@ -1,0 +1,86 @@
+'use strict';
+
+module.exports = {
+  async up(queryInterface, Sequelize) {
+    await queryInterface.createTable('labours', {
+      id: {
+        type: Sequelize.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+        allowNull: false,
+        unique: true,
+      },
+
+      userId: {
+        type: Sequelize.INTEGER,
+      },
+
+      name: {
+        type: Sequelize.STRING,
+        allowNull: false,
+      },
+
+      phone: {
+        type: Sequelize.STRING,
+        allowNull: false,
+        unique: true,
+      },
+
+      city: {
+        type: Sequelize.STRING,
+      },
+
+      address: {
+        type: Sequelize.TEXT,
+      },
+
+      isAvailable: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: true,
+      },
+
+      profileImage: {
+        type: Sequelize.STRING,
+      },
+
+      experienceYears: {
+        type: Sequelize.INTEGER,
+        defaultValue: 0,
+      },
+
+      age: {
+        type: Sequelize.INTEGER,
+        allowNull: true,
+      },
+
+      gender: {
+        type: Sequelize.ENUM('male', 'female'),
+        allowNull: false,
+      },
+
+      createdById: {
+        type: Sequelize.INTEGER,
+      },
+
+      updatedById: {
+        type: Sequelize.INTEGER,
+      },
+
+      createdAt: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.fn('NOW'),
+      },
+
+      updatedAt: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.fn('NOW'),
+      },
+    });
+  },
+
+  async down(queryInterface, Sequelize) {
+    await queryInterface.dropTable('labour');
+  },
+};
