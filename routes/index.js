@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const labourController = require("../controller/labours/index");
+const labourController = require("../controller/Labours/index");
 const ownerController = require("../controller/owner/index");
 const authController = require("../middleware/auth/index");
 const roleController = require("../controller/Permission_roles/index");
