@@ -9,8 +9,7 @@ const MigrationHelper = require("./helper/migrationHelper");
 const app = express();
 const server = http.createServer(app);
 
-const port = config.PORT || 8084;  // 8084 fix kiya
-
+const port = process.env.PORT || 5352;
 // middleware
 app.use(cors());
 app.use(express.json());
