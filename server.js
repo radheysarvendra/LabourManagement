@@ -22,7 +22,7 @@ const routes = require("./routes");
 app.use("", routes);
 
 const runStartupTasks = async () => {
-  await seedSkills(db.skill);
+  await seedSkills(db.skill, db.category, db.categorySkill);
   await seedAddressData(db);
 };
 

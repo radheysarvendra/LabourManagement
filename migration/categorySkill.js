@@ -2,30 +2,30 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable('skills', {
+    await queryInterface.createTable('categorySkills', {
       id: {
         type: Sequelize.INTEGER,
         autoIncrement: true,
         primaryKey: true,
         allowNull: false,
       },
-      skillName: {
-        type: Sequelize.STRING,
-        allowNull: false,
-        unique: true,
-      },
-      hindi: {
-        type: Sequelize.STRING,
-        allowNull: true,
-      },
-      defaultWage: {
+      categoryId: {
         type: Sequelize.INTEGER,
         allowNull: false,
-        defaultValue: 0,
+        references: {
+          model: 'categories',
+          key: 'id',
+        },
+        onDelete: 'CASCADE',
       },
-      category: {
-        type: Sequelize.STRING,
-        allowNull: true,
+      skillId: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'skills',
+          key: 'id',
+        },
+        onDelete: 'CASCADE',
       },
       isActive: {
         type: Sequelize.BOOLEAN,
@@ -43,9 +43,15 @@ module.exports = {
         defaultValue: Sequelize.fn('NOW'),
       },
     });
+
+    await queryInterface.addIndex('categorySkills', ['categoryId', 'skillId'], {
+      unique: true,
+    });
+    await queryInterface.addIndex('categorySkills', ['categoryId']);
+    await queryInterface.addIndex('categorySkills', ['skillId']);
   },
 
   async down(queryInterface, Sequelize) {
-    await queryInterface.dropTable('skills');
+    await queryInterface.dropTable('categorySkills');
   },
 };

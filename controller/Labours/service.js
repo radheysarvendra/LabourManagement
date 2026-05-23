@@ -60,6 +60,14 @@ const buildSkillList = ({ skill, skills }) => {
   return skill ? [skill] : [];
 };
 
+const getSkillName = (skillItem) => {
+  if (typeof skillItem === "string") {
+    return skillItem;
+  }
+
+  return skillItem?.skillName || skillItem?.name || skillItem?.skill || "";
+};
+
 const getSkillWage = (skillWages, skillName, fallbackWage) => {
   if (!skillWages) {
     return fallbackWage || 0;
@@ -71,6 +79,14 @@ const getSkillWage = (skillWages, skillName, fallbackWage) => {
   }
 
   return Number(skillWages[skillName] ?? fallbackWage ?? 0);
+};
+
+const getSkillItemWage = (skillItem) => {
+  if (!skillItem || typeof skillItem === "string") {
+    return null;
+  }
+
+  return skillItem.wage ?? skillItem.dailyWage ?? skillItem.defaultWage ?? null;
 };
 
 const labourInclude = [
@@ -108,29 +124,44 @@ const mapLabourWithSkills = (labour) => {
 const createLabourSkillRows = async ({ labourId, skills, skillWages, experienceYears }) => {
   await LabourSkill.destroy({ where: { labourId } });
 
-  const skillList = [...new Set(skills.map((item) => String(item || "").trim()).filter(Boolean))];
+  const skillMap = new Map();
 
-  for (const [index, skillName] of skillList.entries()) {
-    const skillData = await Skill.findOne({
-      where: {
-        skillName: {
-          [Op.iLike]: skillName,
+  for (const item of skills) {
+    const skillName = getSkillName(item).trim();
+
+    if (skillName) {
+      skillMap.set(normalizeText(skillName), { name: skillName, raw: item });
+    }
+  }
+
+  const skillList = [...skillMap.values()];
+
+  for (const [index, skillItem] of skillList.entries()) {
+    const skillId = typeof skillItem.raw === "object" ? skillItem.raw.skillId || skillItem.raw.id : null;
+    const skillData = skillId
+      ? await Skill.findOne({ where: { id: skillId } })
+      : await Skill.findOne({
+        where: {
+          skillName: {
+            [Op.iLike]: skillItem.name,
+          },
         },
-      },
-    });
+      });
 
     if (!skillData) {
-      const error = new Error(`${skillName} skill master table me nahi mila`);
+      const error = new Error(`${skillItem.name} skill master table me nahi mila`);
       error.statusCode = 400;
       throw error;
     }
 
+    const itemWage = getSkillItemWage(skillItem.raw);
+
     await LabourSkill.create({
       labourId,
       skillId: skillData.id,
-      dailyWage: getSkillWage(skillWages, skillData.skillName, skillData.defaultWage),
+      dailyWage: Number(itemWage ?? getSkillWage(skillWages, skillData.skillName, skillData.defaultWage)),
       isPrimary: index === 0,
-      experienceYears: Number(experienceYears || 0),
+      experienceYears: Number(skillItem.raw?.experienceYears ?? experienceYears ?? 0),
     });
   }
 };

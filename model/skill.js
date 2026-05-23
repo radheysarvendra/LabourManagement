@@ -13,14 +13,23 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         unique: true,
       },
+      hindi: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
       defaultWage: {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 0,
       },
       category: {
-        type: DataTypes.ENUM("construction", "electrical", "general"),
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      isActive: {
+        type: DataTypes.BOOLEAN,
         allowNull: false,
+        defaultValue: true,
       },
     },
     {

@@ -2,14 +2,14 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable('skills', {
+    await queryInterface.createTable('categories', {
       id: {
         type: Sequelize.INTEGER,
         autoIncrement: true,
         primaryKey: true,
         allowNull: false,
       },
-      skillName: {
+      name: {
         type: Sequelize.STRING,
         allowNull: false,
         unique: true,
@@ -18,12 +18,11 @@ module.exports = {
         type: Sequelize.STRING,
         allowNull: true,
       },
-      defaultWage: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
-        defaultValue: 0,
+      icon: {
+        type: Sequelize.STRING,
+        allowNull: true,
       },
-      category: {
+      color: {
         type: Sequelize.STRING,
         allowNull: true,
       },
@@ -46,6 +45,6 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
-    await queryInterface.dropTable('skills');
+    await queryInterface.dropTable('categories');
   },
 };

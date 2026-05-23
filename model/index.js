@@ -63,6 +63,8 @@ const connectDB = async () => {
 db.labour = require("./labour")(sequelize, DataTypes);
 db.owner = require("./owner")(sequelize, DataTypes);
 db.skill = require("./skill")(sequelize, DataTypes);
+db.category = require("./category")(sequelize, DataTypes);
+db.categorySkill = require("./categorySkill")(sequelize, DataTypes);
 db.labourSkill = require("./labourSkill")(sequelize, DataTypes);
 db.state = require("./state")(sequelize, DataTypes);
 db.district = require("./district")(sequelize, DataTypes);
@@ -94,6 +96,33 @@ db.skill.hasMany(db.labourSkill, {
 });
 
 db.labourSkill.belongsTo(db.skill, {
+  foreignKey: "skillId",
+  otherKey: "id",
+  as: "skill",
+});
+
+// NOTE - category skills map
+db.category.hasMany(db.categorySkill, {
+  foreignKey: "categoryId",
+  sourceKey: "id",
+  as: "categorySkills",
+  onDelete: "CASCADE",
+});
+
+db.categorySkill.belongsTo(db.category, {
+  foreignKey: "categoryId",
+  otherKey: "id",
+  as: "category",
+});
+
+db.skill.hasMany(db.categorySkill, {
+  foreignKey: "skillId",
+  sourceKey: "id",
+  as: "categorySkills",
+  onDelete: "CASCADE",
+});
+
+db.categorySkill.belongsTo(db.skill, {
   foreignKey: "skillId",
   otherKey: "id",
   as: "skill",
