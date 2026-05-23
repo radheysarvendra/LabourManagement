@@ -24,10 +24,6 @@ module.exports = (sequelize, DataTypes) => {  // FIX: DataTypes bhi receive karo
       type: DataTypes.ENUM("home_repair", "construction", "both"),
       allowNull: false,
     },
-    village: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
     city: {
       type: DataTypes.STRING,
       allowNull: true,

@@ -66,7 +66,6 @@ const createOwnerService = async (payload) => {
     name,
     phone,
     workType,
-    village,
     city,
     district,
     state,
@@ -108,7 +107,6 @@ const createOwnerService = async (payload) => {
     name,
     phone,
     workType: normalizeWorkType(workType),
-    village,
     city: city || location.district,
     district: location.district,
     state: location.state,
@@ -199,6 +197,7 @@ const updateOwnerService = async (id, payload) => {
   await Owner.update(
     {
       ...payload,
+      village: undefined,
       workType: payload.workType ? normalizeWorkType(payload.workType) : undefined,
       city: payload.city || location.district,
       district: location.district,
