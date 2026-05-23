@@ -32,7 +32,7 @@ module.exports = {
   PHONE_ALREADY_REGISTERED: "Phone number already registered hai",
  
   // OWNER
-  OWNER_CREATED_SUCCESSFULLY: "Owner created successfully",
+  OWNER_CREATED_SUCCESSFULLY: "Owner Created successfully",
   OWNER_UPDATED_SUCCESSFULLY: "Owner updated successfully",
   OWNER_DELETED_SUCCESSFULLY: "Owner deleted successfully",
   OWNER_NOT_FOUND: "Owner not found",
