@@ -7,6 +7,10 @@ const { getPincodeDetails } = require("../../utils/indiaPost");
 const Labour = db.labour;
 const Skill = db.skill;
 const LabourSkill = db.labourSkill;
+const State = db.state;
+const District = db.district;
+const Pincode = db.pincode;
+const PostOffice = db.postOffice;
 
 const normalizeText = (value) => String(value || "").trim().toLowerCase();
 
@@ -350,21 +354,69 @@ const updateLabourByIdService = async (id, payload) => {
   };
 };
 
-const searchLaboursService = async ({ pincode, district, skill }) => {
-  const location = pincode ? await getLocationData({ pincode, district }) : { district };
-  const where = { isAvailable: true };
-  const locationFilters = [];
+const resolveSearchLocation = async ({ stateId, districtId, pincodeId, postOfficeId, pincode, district }) => {
+  const location = {
+    state: null,
+    district: district || null,
+    pincode: pincode || null,
+    postOffice: null,
+  };
 
-  if (location.pincode) {
-    locationFilters.push({ pincode: location.pincode });
+  if (stateId) {
+    const stateData = await State.findOne({ where: { id: stateId } });
+    location.state = stateData?.stateName || null;
+  }
+
+  if (districtId) {
+    const districtData = await District.findOne({ where: { id: districtId } });
+    location.district = districtData?.districtName || location.district;
+  }
+
+  if (pincodeId) {
+    const pincodeData = await Pincode.findOne({ where: { id: pincodeId } });
+    location.pincode = pincodeData?.pincode || location.pincode;
+  } else if (pincode) {
+    const pincodeDetails = await getLocationData({ pincode, district: location.district });
+    location.pincode = pincodeDetails.pincode;
+    location.district = pincodeDetails.district || location.district;
+    location.state = pincodeDetails.state || location.state;
+    location.areaNames = pincodeDetails.areaNames;
+    location.postOfficeList = pincodeDetails.postOfficeList;
+  }
+
+  if (postOfficeId) {
+    const postOfficeData = await PostOffice.findOne({ where: { id: postOfficeId } });
+    location.postOffice = postOfficeData?.postOfficeName || null;
+  }
+
+  return location;
+};
+
+const searchLaboursService = async ({ stateId, districtId, pincodeId, postOfficeId, pincode, district, skill }) => {
+  const location = await resolveSearchLocation({
+    stateId,
+    districtId,
+    pincodeId,
+    postOfficeId,
+    pincode,
+    district,
+  });
+  const where = { isAvailable: true };
+
+  if (location.state) {
+    where.state = { [Op.iLike]: location.state };
   }
 
   if (location.district) {
-    locationFilters.push({ district: { [Op.iLike]: location.district } });
+    where.district = { [Op.iLike]: location.district };
   }
 
-  if (locationFilters.length > 0) {
-    where[Op.or] = locationFilters;
+  if (location.pincode) {
+    where.pincode = location.pincode;
+  }
+
+  if (location.postOffice) {
+    where.postOffice = { [Op.iLike]: location.postOffice };
   }
 
   const labours = await Labour.findAll({ where, include: labourInclude });
@@ -378,12 +430,18 @@ const searchLaboursService = async ({ pincode, district, skill }) => {
         ? labourSkills.some((item) => normalizeText(item) === requestedSkill)
         : false;
       const samePincode = location.pincode && json.pincode === location.pincode;
+      const samePostOffice =
+        location.postOffice && normalizeText(json.postOffice) === normalizeText(location.postOffice);
       const sameDistrict =
         location.district && normalizeText(json.district) === normalizeText(location.district);
 
       return {
         ...json,
-        matchScore: Number(hasSkillMatch) * 100 + Number(samePincode) * 10 + Number(sameDistrict),
+        matchScore:
+          Number(hasSkillMatch) * 100 +
+          Number(samePostOffice) * 30 +
+          Number(samePincode) * 20 +
+          Number(sameDistrict) * 10,
       };
     })
     .sort((a, b) => b.matchScore - a.matchScore || a.name.localeCompare(b.name));
@@ -397,6 +455,7 @@ const searchLaboursService = async ({ pincode, district, skill }) => {
         pincode: location.pincode || null,
         district: location.district || null,
         state: location.state || null,
+        postOfficeName: location.postOffice || null,
         areaNames: location.areaNames || [],
         postOffice: location.postOfficeList || [],
         skill: skill || null,
