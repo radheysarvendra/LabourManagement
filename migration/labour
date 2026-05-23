@@ -30,6 +30,31 @@ module.exports = {
         type: Sequelize.STRING,
       },
 
+      village: {
+        type: Sequelize.STRING,
+      },
+
+      district: {
+        type: Sequelize.STRING,
+      },
+
+      state: {
+        type: Sequelize.STRING,
+      },
+
+      pincode: {
+        type: Sequelize.STRING,
+      },
+
+      area: {
+        type: Sequelize.STRING,
+      },
+
+      postOffice: {
+        type: Sequelize.STRING,
+        defaultValue: null,
+      },
+
       address: {
         type: Sequelize.TEXT,
       },
@@ -81,6 +106,6 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
-    await queryInterface.dropTable('labour');
+    await queryInterface.dropTable('labours');
   },
 };
