@@ -1,79 +1,89 @@
-const {
-  STRING,
-  INTEGER,
-  BOOLEAN,
-  DATE,
-  TEXT,
-  FLOAT,
-  BIGINT,
-  ENUM,
-  UUID,
-  JSONB,
-} = require("sequelize");
-module.exports = (Sequelize, DataTypes) => {
-  const labour = Sequelize.define("labour", {
+module.exports = (sequelize, DataTypes) => {
+  const Labour = sequelize.define("labour", {
     id: {
-      type: INTEGER,
+      type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
       allowNull: false,
       unique: true,
     },
-
     userId: {
-      type: INTEGER,
+      type: DataTypes.INTEGER,
       allowNull: true,
     },
-
     name: {
-      type: STRING,
+      type: DataTypes.STRING,
       allowNull: false,
     },
-
     phone: {
-      type: STRING,
+      type: DataTypes.STRING,
       allowNull: false,
       unique: true,
     },
-
     city: {
-      type: STRING,
+      type: DataTypes.STRING,
+      allowNull: true,
     },
-
+    village: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    district: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    state: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    pincode: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    area: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    postOffice: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     address: {
-      type: TEXT,
+      type: DataTypes.TEXT,
+      allowNull: true,
     },
-
     isAvailable: {
-      type: BOOLEAN,
+      type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
-
     profileImage: {
-      type: STRING,
+      type: DataTypes.STRING,
+      allowNull: true,
     },
-
     experienceYears: {
-      type: INTEGER,
+      type: DataTypes.INTEGER,
       defaultValue: 0,
     },
-
- age: {
-  type: INTEGER,
-  allowNull: false,
-},
-   gender: {
-  type: ENUM("male", "female"),
-  allowNull: false,
-},
+    age: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+    gender: {
+      type: DataTypes.ENUM("male", "female"),
+      allowNull: false,
+    },
     createdById: {
-      type: INTEGER,
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
-
     updatedById: {
-      type: INTEGER,
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
+  }, {
+    tableName: "labours",
+    timestamps: true,
   });
 
-  return labour;
+  return Labour;
 };

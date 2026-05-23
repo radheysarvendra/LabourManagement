@@ -39,9 +39,39 @@ module.exports = {
         allowNull: true,
       },
 
+      city: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+
       // Screenshot se — District
       district: {
         type: Sequelize.STRING,
+        allowNull: true,
+      },
+
+      state: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+
+      pincode: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+
+      area: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+
+      postOffice: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+
+      address: {
+        type: Sequelize.TEXT,
         allowNull: true,
       },
 

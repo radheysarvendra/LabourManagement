@@ -3,13 +3,37 @@ const router = express.Router();
 
 const labourController = require("../controller/Labours/index");
 const ownerController = require("../controller/owner/index");
+const locationController = require("../controller/location/index");
+const addressController = require("../controller/address/index");
 const authController = require("../middleware/auth/index");
 const roleController = require("../controller/Permission_roles/index");
 const { verifyToken } = require("../middleware/auth");
 
+router.get("/", (req, res) => {
+  res.status(200).send({
+    success: true,
+    message: "Labour backend is live",
+  });
+});
+
+router.get("/health", (req, res) => {
+  res.status(200).send({
+    success: true,
+    service: "labour-backend",
+    status: "ok",
+  });
+});
+
 // Labour routes  (createLabour → /labour POST)
 router.post("/auth/login", authController.login);
+router.get("/pincode/:pincode", locationController.getPincodeDetails);
+router.get("/api/address/states", addressController.getStates);
+router.get("/api/address/districts/:stateId", addressController.getDistricts);
+router.get("/api/address/pincode/:pincode", addressController.getPincodeDetails);
+router.post("/api/address/create", addressController.createAddress);
+router.get("/api/address/:entityType/:entityId", addressController.getAddressByEntity);
 router.post("/createLabour", labourController.createLabour);           
+router.get("/searchLabour", labourController.searchLabours);
 router.get("/getAllLabour", verifyToken, labourController.getAllLabours); 
 router.get("/getLabourById/:id",verifyToken, labourController.getLabourById);
 router.put("/updateLabourById/:id", verifyToken, labourController.updateLabourById);
