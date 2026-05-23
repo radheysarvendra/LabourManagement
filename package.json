@@ -13,12 +13,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
-    "migrate": "node migrate.js run",
-    "migrate:fresh": "node migrate.js fresh",
-    "migrate:status": "node migrate.js status",
-    "migrate:reset": "node migrate.js reset",
-    "migrate:columns": "node migrate.js columns"
+    "dev": "nodemon server.js"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
