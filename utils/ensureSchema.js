@@ -7,6 +7,16 @@ const ensureColumn = async (queryInterface, tableName, columnName, definition) =
   }
 };
 
+const ensureIndex = async (queryInterface, tableName, fields, name) => {
+  const indexes = await queryInterface.showIndex(tableName);
+  const exists = indexes.some((index) => index.name === name);
+
+  if (!exists) {
+    await queryInterface.addIndex(tableName, fields, { name });
+    console.log(`Added missing index ${name}`);
+  }
+};
+
 const ensureSchema = async (db) => {
   const queryInterface = db.sequelize.getQueryInterface();
   const stringColumn = {
@@ -21,6 +31,10 @@ const ensureSchema = async (db) => {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
     city: stringColumn,
     village: stringColumn,
+    stateId: { type: db.Sequelize.INTEGER, allowNull: true },
+    districtId: { type: db.Sequelize.INTEGER, allowNull: true },
+    pincodeId: { type: db.Sequelize.INTEGER, allowNull: true },
+    postOfficeId: { type: db.Sequelize.INTEGER, allowNull: true },
     district: stringColumn,
     state: stringColumn,
     pincode: stringColumn,
@@ -83,6 +97,14 @@ const ensureSchema = async (db) => {
   for (const [columnName, definition] of Object.entries(categorySkillColumns)) {
     await ensureColumn(queryInterface, "categorySkills", columnName, definition);
   }
+
+  await ensureIndex(queryInterface, "labours", ["stateId"], "idx_labours_state_id");
+  await ensureIndex(queryInterface, "labours", ["districtId"], "idx_labours_district_id");
+  await ensureIndex(queryInterface, "labours", ["pincodeId"], "idx_labours_pincode_id");
+  await ensureIndex(queryInterface, "labours", ["postOfficeId"], "idx_labours_post_office_id");
+  await ensureIndex(queryInterface, "labours", ["pincode"], "idx_labours_pincode");
+  await ensureIndex(queryInterface, "labourSkills", ["skillId"], "idx_labour_skills_skill_id");
+  await ensureIndex(queryInterface, "labourSkills", ["labourId"], "idx_labour_skills_labour_id");
 };
 
 module.exports = {

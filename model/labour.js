@@ -28,6 +28,22 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
+    stateId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    districtId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    pincodeId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    postOfficeId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     district: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -83,6 +99,13 @@ module.exports = (sequelize, DataTypes) => {
   }, {
     tableName: "labours",
     timestamps: true,
+    indexes: [
+      { fields: ["stateId"] },
+      { fields: ["districtId"] },
+      { fields: ["pincodeId"] },
+      { fields: ["postOfficeId"] },
+      { fields: ["pincode"] },
+    ],
   });
 
   return Labour;

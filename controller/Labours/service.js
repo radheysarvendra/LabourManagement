@@ -56,6 +56,69 @@ const getLocationData = async ({ pincode, district, state, area, postOffice }) =
   };
 };
 
+const resolveLocationIds = async ({ state, district, pincode, postOffice, stateId, districtId, pincodeId, postOfficeId }) => {
+  const result = {
+    stateId: stateId || null,
+    districtId: districtId || null,
+    pincodeId: pincodeId || null,
+    postOfficeId: postOfficeId || null,
+  };
+
+  if (result.postOfficeId) {
+    const postOfficeData = await PostOffice.findOne({
+      where: { id: result.postOfficeId },
+      include: [{ model: Pincode, as: "pincode", include: [{ model: District, as: "district" }] }],
+    });
+
+    if (postOfficeData) {
+      result.pincodeId = postOfficeData.pincodeId;
+      result.districtId = postOfficeData.pincode?.districtId || result.districtId;
+      result.stateId = postOfficeData.pincode?.district?.stateId || result.stateId;
+      return result;
+    }
+  }
+
+  if (result.pincodeId) {
+    const pincodeData = await Pincode.findOne({ where: { id: result.pincodeId } });
+    if (pincodeData) {
+      result.districtId = pincodeData.districtId || result.districtId;
+    }
+  } else if (pincode) {
+    const pincodeData = await Pincode.findOne({ where: { pincode } });
+    if (pincodeData) {
+      result.pincodeId = pincodeData.id;
+      result.districtId = pincodeData.districtId || result.districtId;
+    }
+  }
+
+  if (!result.districtId && district) {
+    const districtData = await District.findOne({
+      where: { districtName: { [Op.iLike]: district } },
+    });
+    result.districtId = districtData?.id || null;
+    result.stateId = districtData?.stateId || result.stateId;
+  }
+
+  if (!result.stateId && state) {
+    const stateData = await State.findOne({
+      where: { stateName: { [Op.iLike]: state } },
+    });
+    result.stateId = stateData?.id || null;
+  }
+
+  if (!result.postOfficeId && result.pincodeId && postOffice) {
+    const postOfficeData = await PostOffice.findOne({
+      where: {
+        pincodeId: result.pincodeId,
+        postOfficeName: { [Op.iLike]: postOffice },
+      },
+    });
+    result.postOfficeId = postOfficeData?.id || null;
+  }
+
+  return result;
+};
+
 const buildSkillList = ({ skill, skills }) => {
   if (Array.isArray(skills) && skills.length > 0) {
     return skills;
@@ -181,6 +244,10 @@ const createLabourService = async (payload) => {
     pincode,
     area,
     postOffice,
+    stateId,
+    districtId,
+    pincodeId,
+    postOfficeId,
     address,
     gender,
     age,
@@ -215,6 +282,16 @@ const createLabourService = async (payload) => {
   }
 
   const location = await getLocationData({ pincode, district, state, area, postOffice });
+  const locationIds = await resolveLocationIds({
+    state: location.state,
+    district: location.district,
+    pincode: location.pincode,
+    postOffice: location.postOffice,
+    stateId,
+    districtId,
+    pincodeId,
+    postOfficeId,
+  });
   const skillList = buildSkillList({ skill, skills });
 
   const data = await Labour.create({
@@ -222,6 +299,10 @@ const createLabourService = async (payload) => {
     phone,
     city,
     village,
+    stateId: locationIds.stateId,
+    districtId: locationIds.districtId,
+    pincodeId: locationIds.pincodeId,
+    postOfficeId: locationIds.postOfficeId,
     district: location.district,
     state: location.state,
     pincode: location.pincode,
@@ -319,11 +400,25 @@ const updateLabourByIdService = async (id, payload) => {
   }
 
   const location = await getLocationData(payload);
+  const locationIds = await resolveLocationIds({
+    state: location.state,
+    district: location.district,
+    pincode: location.pincode,
+    postOffice: location.postOffice,
+    stateId: payload.stateId,
+    districtId: payload.districtId,
+    pincodeId: payload.pincodeId,
+    postOfficeId: payload.postOfficeId,
+  });
   const skillList = buildSkillList(payload);
 
   await Labour.update(
     {
       ...payload,
+      stateId: locationIds.stateId,
+      districtId: locationIds.districtId,
+      pincodeId: locationIds.pincodeId,
+      postOfficeId: locationIds.postOfficeId,
       district: location.district,
       state: location.state,
       pincode: location.pincode,
@@ -402,21 +497,46 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
     district,
   });
   const where = { isAvailable: true };
+  const baseWhere = { isAvailable: true };
 
   if (location.state) {
-    where.state = { [Op.iLike]: location.state };
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push({
+      [Op.or]: [
+        ...(stateId ? [{ stateId: Number(stateId) }] : []),
+        { state: { [Op.iLike]: location.state } },
+      ],
+    });
   }
 
   if (location.district) {
-    where.district = { [Op.iLike]: location.district };
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push({
+      [Op.or]: [
+        ...(districtId ? [{ districtId: Number(districtId) }] : []),
+        { district: { [Op.iLike]: location.district } },
+      ],
+    });
   }
 
   if (location.pincode) {
-    where.pincode = location.pincode;
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push({
+      [Op.or]: [
+        ...(pincodeId ? [{ pincodeId: Number(pincodeId) }] : []),
+        { pincode: location.pincode },
+      ],
+    });
   }
 
   if (location.postOffice) {
-    where.postOffice = { [Op.iLike]: location.postOffice };
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push({
+      [Op.or]: [
+        ...(postOfficeId ? [{ postOfficeId: Number(postOfficeId) }] : []),
+        { postOffice: { [Op.iLike]: location.postOffice } },
+      ],
+    });
   }
 
   const labours = await Labour.findAll({ where, include: labourInclude });
@@ -437,6 +557,7 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
 
       return {
         ...json,
+        hasSkillMatch,
         matchScore:
           Number(hasSkillMatch) * 100 +
           Number(samePostOffice) * 30 +
@@ -444,13 +565,83 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
           Number(sameDistrict) * 10,
       };
     })
+    .filter((item) => (requestedSkill ? item.hasSkillMatch : true))
     .sort((a, b) => b.matchScore - a.matchScore || a.name.localeCompare(b.name));
+  const countAndFilters = [];
+
+  if (location.state) {
+    countAndFilters.push({
+      [Op.or]: [
+        ...(stateId ? [{ stateId: Number(stateId) }] : []),
+        { state: { [Op.iLike]: location.state } },
+      ],
+    });
+  }
+
+  const stateWhere = countAndFilters.length
+    ? { ...baseWhere, [Op.and]: [...countAndFilters] }
+    : baseWhere;
+
+  if (location.district) {
+    countAndFilters.push({
+      [Op.or]: [
+        ...(districtId ? [{ districtId: Number(districtId) }] : []),
+        { district: { [Op.iLike]: location.district } },
+      ],
+    });
+  }
+
+  const districtWhere = countAndFilters.length
+    ? { ...baseWhere, [Op.and]: [...countAndFilters] }
+    : stateWhere;
+
+  if (location.pincode) {
+    countAndFilters.push({
+      [Op.or]: [
+        ...(pincodeId ? [{ pincodeId: Number(pincodeId) }] : []),
+        { pincode: location.pincode },
+      ],
+    });
+  }
+
+  const pincodeWhere = countAndFilters.length
+    ? { ...baseWhere, [Op.and]: [...countAndFilters] }
+    : districtWhere;
+
+  if (location.postOffice) {
+    countAndFilters.push({
+      [Op.or]: [
+        ...(postOfficeId ? [{ postOfficeId: Number(postOfficeId) }] : []),
+        { postOffice: { [Op.iLike]: location.postOffice } },
+      ],
+    });
+  }
+
+  const postOfficeWhere = countAndFilters.length
+    ? { ...baseWhere, [Op.and]: [...countAndFilters] }
+    : pincodeWhere;
+  const [totalAvailable, stateCount, districtCount, pincodeCount, postOfficeCount] =
+    await Promise.all([
+      Labour.count({ where: baseWhere }),
+      Labour.count({ where: stateWhere }),
+      Labour.count({ where: districtWhere }),
+      Labour.count({ where: pincodeWhere }),
+      Labour.count({ where: postOfficeWhere }),
+    ]);
 
   return {
     statusCode: 200,
     body: {
       success: true,
       total: data.length,
+      counts: {
+        totalAvailable,
+        stateCount,
+        districtCount,
+        pincodeCount,
+        postOfficeCount,
+        skillCount: data.length,
+      },
       meta: {
         pincode: location.pincode || null,
         district: location.district || null,
