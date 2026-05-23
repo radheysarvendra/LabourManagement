@@ -9,16 +9,54 @@ const ensureColumn = async (queryInterface, tableName, columnName, definition) =
 
 const ensureSchema = async (db) => {
   const queryInterface = db.sequelize.getQueryInterface();
-
-  await ensureColumn(queryInterface, "labours", "village", {
+  const stringColumn = {
     type: db.Sequelize.STRING,
     allowNull: true,
-  });
-
-  await ensureColumn(queryInterface, "owners", "village", {
-    type: db.Sequelize.STRING,
+  };
+  const textColumn = {
+    type: db.Sequelize.TEXT,
     allowNull: true,
-  });
+  };
+  const labourColumns = {
+    userId: { type: db.Sequelize.INTEGER, allowNull: true },
+    city: stringColumn,
+    village: stringColumn,
+    district: stringColumn,
+    state: stringColumn,
+    pincode: stringColumn,
+    area: stringColumn,
+    postOffice: stringColumn,
+    address: textColumn,
+    isAvailable: { type: db.Sequelize.BOOLEAN, allowNull: true, defaultValue: true },
+    profileImage: stringColumn,
+    experienceYears: { type: db.Sequelize.INTEGER, allowNull: true, defaultValue: 0 },
+    createdById: { type: db.Sequelize.INTEGER, allowNull: true },
+    updatedById: { type: db.Sequelize.INTEGER, allowNull: true },
+  };
+  const ownerColumns = {
+    userId: { type: db.Sequelize.INTEGER, allowNull: true },
+    city: stringColumn,
+    village: stringColumn,
+    district: stringColumn,
+    state: stringColumn,
+    pincode: stringColumn,
+    area: stringColumn,
+    postOffice: stringColumn,
+    address: textColumn,
+    age: { type: db.Sequelize.INTEGER, allowNull: true },
+    profileImage: stringColumn,
+    isActive: { type: db.Sequelize.BOOLEAN, allowNull: true, defaultValue: true },
+    createdById: { type: db.Sequelize.INTEGER, allowNull: true },
+    updatedById: { type: db.Sequelize.INTEGER, allowNull: true },
+  };
+
+  for (const [columnName, definition] of Object.entries(labourColumns)) {
+    await ensureColumn(queryInterface, "labours", columnName, definition);
+  }
+
+  for (const [columnName, definition] of Object.entries(ownerColumns)) {
+    await ensureColumn(queryInterface, "owners", columnName, definition);
+  }
 };
 
 module.exports = {
