@@ -49,6 +49,20 @@ const ensureSchema = async (db) => {
     createdById: { type: db.Sequelize.INTEGER, allowNull: true },
     updatedById: { type: db.Sequelize.INTEGER, allowNull: true },
   };
+  const categoryColumns = {
+    hindi: stringColumn,
+    icon: stringColumn,
+    color: stringColumn,
+    isActive: { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
+  };
+  const skillColumns = {
+    hindi: stringColumn,
+    category: stringColumn,
+    isActive: { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
+  };
+  const categorySkillColumns = {
+    isActive: { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
+  };
 
   for (const [columnName, definition] of Object.entries(labourColumns)) {
     await ensureColumn(queryInterface, "labours", columnName, definition);
@@ -56,6 +70,18 @@ const ensureSchema = async (db) => {
 
   for (const [columnName, definition] of Object.entries(ownerColumns)) {
     await ensureColumn(queryInterface, "owners", columnName, definition);
+  }
+
+  for (const [columnName, definition] of Object.entries(categoryColumns)) {
+    await ensureColumn(queryInterface, "categories", columnName, definition);
+  }
+
+  for (const [columnName, definition] of Object.entries(skillColumns)) {
+    await ensureColumn(queryInterface, "skills", columnName, definition);
+  }
+
+  for (const [columnName, definition] of Object.entries(categorySkillColumns)) {
+    await ensureColumn(queryInterface, "categorySkills", columnName, definition);
   }
 };
 
