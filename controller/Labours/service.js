@@ -171,6 +171,7 @@ const createLabourService = async (payload) => {
     name,
     phone,
     city,
+    village,
     district,
     state,
     pincode,
@@ -216,6 +217,7 @@ const createLabourService = async (payload) => {
     name,
     phone,
     city,
+    village,
     district: location.district,
     state: location.state,
     pincode: location.pincode,
@@ -318,7 +320,6 @@ const updateLabourByIdService = async (id, payload) => {
   await Labour.update(
     {
       ...payload,
-      village: undefined,
       district: location.district,
       state: location.state,
       pincode: location.pincode,

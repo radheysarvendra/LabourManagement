@@ -28,6 +28,10 @@ module.exports = (sequelize, DataTypes) => {  // FIX: DataTypes bhi receive karo
       type: DataTypes.STRING,
       allowNull: true,
     },
+    village: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     district: {
       type: DataTypes.STRING,
       allowNull: true,
