@@ -52,22 +52,6 @@ module.exports = (sequelize, DataTypes) => {  // FIX: DataTypes bhi receive karo
       type: DataTypes.STRING,
       allowNull: true,
     },
-    needCategory: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    needCategoryHindi: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    needSkill: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    needSkillHindi: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
     address: {
       type: DataTypes.TEXT,
       allowNull: true,
