@@ -107,6 +107,7 @@ const createOwnerService = async (payload) => {
   const data = await Owner.create({
     name,
     phone,
+    status: 1,
     workType: normalizeWorkType(workType),
     village,
     city: city || location.district,

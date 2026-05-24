@@ -27,6 +27,8 @@ router.get("/health", (req, res) => {
 
 // Labour routes  (createLabour → /labour POST)
 router.post("/auth/login", authController.login);
+router.post("/auth/request-otp", authController.requestOtp);
+router.post("/auth/verify-otp", authController.verifyOtp);
 router.get("/pincode/:pincode", locationController.getPincodeDetails);
 router.get("/api/address/states", addressController.getStates);
 router.get("/api/address/districts/:stateId", addressController.getDistricts);

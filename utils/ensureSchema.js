@@ -29,6 +29,8 @@ const ensureSchema = async (db) => {
   };
   const labourColumns = {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
+    labourCode: { type: db.Sequelize.STRING, allowNull: true, unique: true },
+    status: { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
     city: stringColumn,
     village: stringColumn,
     stateId: { type: db.Sequelize.INTEGER, allowNull: true },
@@ -49,6 +51,7 @@ const ensureSchema = async (db) => {
   };
   const ownerColumns = {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
+    status: { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
     city: stringColumn,
     village: stringColumn,
     district: stringColumn,
@@ -103,6 +106,7 @@ const ensureSchema = async (db) => {
   await ensureIndex(queryInterface, "labours", ["pincodeId"], "idx_labours_pincode_id");
   await ensureIndex(queryInterface, "labours", ["postOfficeId"], "idx_labours_post_office_id");
   await ensureIndex(queryInterface, "labours", ["pincode"], "idx_labours_pincode");
+  await ensureIndex(queryInterface, "labours", ["labourCode"], "idx_labours_labour_code");
   await ensureIndex(queryInterface, "labourSkills", ["skillId"], "idx_labour_skills_skill_id");
   await ensureIndex(queryInterface, "labourSkills", ["labourId"], "idx_labour_skills_labour_id");
 };
