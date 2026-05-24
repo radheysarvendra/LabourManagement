@@ -99,13 +99,6 @@ module.exports = (sequelize, DataTypes) => {
   }, {
     tableName: "labours",
     timestamps: true,
-    indexes: [
-      { fields: ["stateId"] },
-      { fields: ["districtId"] },
-      { fields: ["pincodeId"] },
-      { fields: ["postOfficeId"] },
-      { fields: ["pincode"] },
-    ],
   });
 
   return Labour;
