@@ -169,6 +169,30 @@ const labourInclude = [
   },
 ];
 
+const getLabourSearchInclude = (requestedSkill) => [
+  {
+    model: LabourSkill,
+    as: "labourSkills",
+    required: Boolean(requestedSkill),
+    include: [
+      {
+        model: Skill,
+        as: "skill",
+        required: Boolean(requestedSkill),
+        ...(requestedSkill
+          ? {
+              where: {
+                skillName: {
+                  [Op.iLike]: requestedSkill,
+                },
+              },
+            }
+          : {}),
+      },
+    ],
+  },
+];
+
 const mapLabourWithSkills = (labour) => {
   const json = labour.toJSON();
   const labourSkills = Array.isArray(json.labourSkills) ? json.labourSkills : [];
@@ -539,16 +563,18 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
     });
   }
 
-  const labours = await Labour.findAll({ where, include: labourInclude });
-  const requestedSkill = normalizeText(skill);
+  const requestedSkill = String(skill || "").trim();
+  const searchResult = await Labour.findAndCountAll({
+    where,
+    include: getLabourSearchInclude(requestedSkill),
+    distinct: true,
+    order: [["createdAt", "DESC"]],
+  });
 
-  const data = labours
+  const data = searchResult.rows
     .map((labour) => {
       const json = mapLabourWithSkills(labour);
-      const labourSkills = Array.isArray(json.skills) ? json.skills : [];
-      const hasSkillMatch = requestedSkill
-        ? labourSkills.some((item) => normalizeText(item) === requestedSkill)
-        : false;
+      const hasSkillMatch = Boolean(requestedSkill);
       const samePincode = location.pincode && json.pincode === location.pincode;
       const samePostOffice =
         location.postOffice && normalizeText(json.postOffice) === normalizeText(location.postOffice);
@@ -565,7 +591,6 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
           Number(sameDistrict) * 10,
       };
     })
-    .filter((item) => (requestedSkill ? item.hasSkillMatch : true))
     .sort((a, b) => b.matchScore - a.matchScore || a.name.localeCompare(b.name));
   const countAndFilters = [];
 
@@ -640,7 +665,7 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
         districtCount,
         pincodeCount,
         postOfficeCount,
-        skillCount: data.length,
+        skillCount: searchResult.count,
       },
       meta: {
         pincode: location.pincode || null,
@@ -649,7 +674,7 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
         postOfficeName: location.postOffice || null,
         areaNames: location.areaNames || [],
         postOffice: location.postOfficeList || [],
-        skill: skill || null,
+        skill: requestedSkill || null,
       },
       data,
     },
