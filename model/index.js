@@ -72,6 +72,7 @@ db.pincode = require("./pincode")(sequelize, DataTypes);
 db.postOffice = require("./postOffice")(sequelize, DataTypes);
 db.address = require("./address")(sequelize, DataTypes);
 db.mobileTokenMap = require("./mobile_token")(sequelize, DataTypes);
+db.authOtp = require("./authOtp")(sequelize, DataTypes);
 db.role = require("./role")(sequelize, DataTypes);
 
 // NOTE - labour skills map

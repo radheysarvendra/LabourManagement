@@ -20,6 +20,11 @@ module.exports = (sequelize, DataTypes) => {  // FIX: DataTypes bhi receive karo
       allowNull: false,
       unique: true,
     },
+    status: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
+    },
     workType: {
       type: DataTypes.ENUM("home_repair", "construction", "both"),
       allowNull: false,

@@ -14,6 +14,19 @@ const PostOffice = db.postOffice;
 
 const normalizeText = (value) => String(value || "").trim().toLowerCase();
 
+const generateLabourCode = async () => {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const code = `LAB-${Math.floor(100000 + Math.random() * 900000)}`;
+    const existing = await Labour.findOne({ where: { labourCode: code } });
+
+    if (!existing) {
+      return code;
+    }
+  }
+
+  return `LAB-${Date.now().toString().slice(-6)}`;
+};
+
 const findSelectedPostOffice = (postOfficeList, selectedName) => {
   if (!selectedName) {
     return postOfficeList[0] || null;
@@ -319,8 +332,10 @@ const createLabourService = async (payload) => {
   const skillList = buildSkillList({ skill, skills });
 
   const data = await Labour.create({
+    labourCode: await generateLabourCode(),
     name,
     phone,
+    status: 1,
     city,
     village,
     stateId: locationIds.stateId,
