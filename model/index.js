@@ -74,6 +74,10 @@ db.address = require("./address")(sequelize, DataTypes);
 db.mobileTokenMap = require("./mobile_token")(sequelize, DataTypes);
 db.authOtp = require("./authOtp")(sequelize, DataTypes);
 db.role = require("./role")(sequelize, DataTypes);
+db.booking = require("./booking")(sequelize, DataTypes);
+db.bookingAllocation = require("./bookingAllocation")(sequelize, DataTypes);
+db.order = require("./order")(sequelize, DataTypes);
+db.orderMapping = require("./orderMapping")(sequelize, DataTypes);
 
 // NOTE - labour skills map
 db.labour.hasMany(db.labourSkill, {
@@ -185,6 +189,82 @@ db.address.belongsTo(db.postOffice, {
   foreignKey: "postOfficeId",
   otherKey: "id",
   as: "postOffice",
+});
+
+// NOTE - booking allocations map
+db.owner.hasMany(db.booking, {
+  foreignKey: "ownerId",
+  sourceKey: "id",
+  as: "bookings",
+});
+
+db.booking.belongsTo(db.owner, {
+  foreignKey: "ownerId",
+  otherKey: "id",
+  as: "owner",
+});
+
+db.booking.hasMany(db.bookingAllocation, {
+  foreignKey: "bookingId",
+  sourceKey: "id",
+  as: "allocations",
+  onDelete: "CASCADE",
+});
+
+db.bookingAllocation.belongsTo(db.booking, {
+  foreignKey: "bookingId",
+  otherKey: "id",
+  as: "booking",
+});
+
+db.labour.hasMany(db.bookingAllocation, {
+  foreignKey: "labourId",
+  sourceKey: "id",
+  as: "bookingAllocations",
+});
+
+db.bookingAllocation.belongsTo(db.labour, {
+  foreignKey: "labourId",
+  otherKey: "id",
+  as: "labour",
+});
+
+// NOTE - order mappings map
+db.order.hasMany(db.orderMapping, {
+  foreignKey: "orderId",
+  sourceKey: "id",
+  as: "mappings",
+  onDelete: "CASCADE",
+});
+
+db.orderMapping.belongsTo(db.order, {
+  foreignKey: "orderId",
+  otherKey: "id",
+  as: "order",
+});
+
+db.owner.hasMany(db.orderMapping, {
+  foreignKey: "ownerId",
+  sourceKey: "id",
+  as: "orderMappings",
+});
+
+db.orderMapping.belongsTo(db.owner, {
+  foreignKey: "ownerId",
+  otherKey: "id",
+  as: "owner",
+});
+
+db.labour.hasMany(db.orderMapping, {
+  foreignKey: "labourId",
+  sourceKey: "id",
+  as: "orderMappings",
+});
+
+db.orderMapping.belongsTo(db.labour, {
+  foreignKey: "labourId",
+  otherKey: "id",
+  as: "labour",
 });
 
 db.connectDB = connectDB;

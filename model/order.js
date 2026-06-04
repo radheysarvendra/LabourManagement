@@ -1,0 +1,95 @@
+module.exports = (sequelize, DataTypes) => {
+  const Order = sequelize.define("order", {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+      allowNull: false,
+      unique: true,
+    },
+    orderCode: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
+    },
+    categoryName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    skill: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    stateId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    districtId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    pincodeId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    postOfficeId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    state: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    district: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    pincode: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    postOffice: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    labourRequired: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
+    },
+    labourAllocated: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    status: {
+      type: DataTypes.ENUM("pending", "partially_allocated", "allocated", "admin_approved", "completed", "cancelled"),
+      allowNull: false,
+      defaultValue: "pending",
+    },
+    adminStatus: {
+      type: DataTypes.ENUM("pending", "approved", "rejected"),
+      allowNull: false,
+      defaultValue: "pending",
+    },
+    note: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+  }, {
+    tableName: "orders",
+    timestamps: true,
+    indexes: [
+      { fields: ["orderCode"] },
+      { fields: ["skill"] },
+      { fields: ["stateId"] },
+      { fields: ["districtId"] },
+      { fields: ["pincode"] },
+      { fields: ["postOfficeId"] },
+      { fields: ["status"] },
+      { fields: ["adminStatus"] },
+    ],
+  });
+
+  return Order;
+};
