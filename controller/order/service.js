@@ -75,6 +75,7 @@ const createOrderService = async (payload) => {
     district,
     pincode,
     postOffice,
+    requiredDate,
     labourRequired = 1,
     note,
   } = payload;
@@ -128,6 +129,7 @@ const createOrderService = async (payload) => {
       district: district || searchResult.body?.meta?.district || null,
       pincode,
       postOffice: postOffice || searchResult.body?.meta?.postOfficeName || null,
+      requiredDate: requiredDate || null,
       labourRequired: requiredCount,
       labourAllocated: allocatedLabours.length,
       status: getOrderStatus(requiredCount, allocatedLabours.length),

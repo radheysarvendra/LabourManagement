@@ -62,6 +62,10 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 0,
     },
+    requiredDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    },
     status: {
       type: DataTypes.ENUM("pending", "partially_allocated", "allocated", "admin_approved", "completed", "cancelled"),
       allowNull: false,
@@ -86,6 +90,7 @@ module.exports = (sequelize, DataTypes) => {
       { fields: ["districtId"] },
       { fields: ["pincode"] },
       { fields: ["postOfficeId"] },
+      { fields: ["requiredDate"] },
       { fields: ["status"] },
       { fields: ["adminStatus"] },
     ],
