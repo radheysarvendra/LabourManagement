@@ -12,7 +12,7 @@ const Order = db.order;
 const Booking = db.booking;
 
 const TOKEN_SECRET = config.SECRET_KEY;
-const DEFAULT_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD;
+const DEFAULT_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD || "Admin@1234";
 
 const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
 
@@ -80,6 +80,19 @@ const ensureDefaultAdmin = async () => {
       roleId: superAdminRole.id,
       name: "Super Admin",
       email: defaultEmail,
+      passwordHash: hashPassword(DEFAULT_ADMIN_PASSWORD),
+      status: "active",
+    });
+    return;
+  }
+
+  const shouldResetDefaultAdmin =
+    process.env.RESET_DEFAULT_ADMIN_PASSWORD === "true" ||
+    !verifyPassword(DEFAULT_ADMIN_PASSWORD, existingAdmin.passwordHash);
+
+  if (shouldResetDefaultAdmin) {
+    await existingAdmin.update({
+      roleId: existingAdmin.roleId || superAdminRole.id,
       passwordHash: hashPassword(DEFAULT_ADMIN_PASSWORD),
       status: "active",
     });
