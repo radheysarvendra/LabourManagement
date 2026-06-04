@@ -44,6 +44,7 @@ const ensureSchema = async (db) => {
     postOffice: stringColumn,
     address: textColumn,
     isAvailable: { type: db.Sequelize.BOOLEAN, allowNull: true, defaultValue: true },
+    isVerified: { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: false },
     profileImage: stringColumn,
     experienceYears: { type: db.Sequelize.INTEGER, allowNull: true, defaultValue: 0 },
     createdById: { type: db.Sequelize.INTEGER, allowNull: true },
@@ -106,6 +107,7 @@ const ensureSchema = async (db) => {
   await ensureIndex(queryInterface, "labours", ["pincodeId"], "idx_labours_pincode_id");
   await ensureIndex(queryInterface, "labours", ["postOfficeId"], "idx_labours_post_office_id");
   await ensureIndex(queryInterface, "labours", ["pincode"], "idx_labours_pincode");
+  await ensureIndex(queryInterface, "labours", ["isVerified"], "idx_labours_is_verified");
   await ensureIndex(queryInterface, "labours", ["labourCode"], "idx_labours_labour_code");
   await ensureIndex(queryInterface, "labourSkills", ["skillId"], "idx_labour_skills_skill_id");
   await ensureIndex(queryInterface, "labourSkills", ["labourId"], "idx_labour_skills_labour_id");

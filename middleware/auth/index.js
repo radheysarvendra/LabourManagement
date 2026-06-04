@@ -75,6 +75,24 @@ const findUserByPhone = async (phone) => {
   return { user: null, userType: null };
 };
 
+const findUsersByPhone = async (phone) => {
+  const [labour, owner] = await Promise.all([
+    Labour.findOne({ where: { phone } }),
+    Owner.findOne({ where: { phone } }),
+  ]);
+  const users = [];
+
+  if (labour) {
+    users.push({ user: labour, userType: "labour" });
+  }
+
+  if (owner) {
+    users.push({ user: owner, userType: "owner" });
+  }
+
+  return users;
+};
+
 const isProfileRegistered = (user) => Number(user?.status ?? 1) === 1;
 
 const requestOtp = async (req, res) => {
@@ -88,9 +106,13 @@ const requestOtp = async (req, res) => {
       });
     }
 
-    const { user, userType } = await findUserByPhone(phone);
+    const requestedUserType = req.body.userType;
+    const users = await findUsersByPhone(phone);
+    const selectedUser =
+      users.find((item) => item.userType === requestedUserType) ||
+      users[0];
 
-    if (!user) {
+    if (!selectedUser) {
       return res.status(404).send({
         success: false,
         message: "User not found. Please register first.",
@@ -98,19 +120,28 @@ const requestOtp = async (req, res) => {
     }
 
     await AuthOtp.destroy({ where: { phone } });
-    await AuthOtp.create({
-      phone,
-      userId: user.id,
-      userType,
-      otpHash: hashOtp(DEFAULT_TEST_OTP),
-      expiresAt: new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000),
-    });
+    const otpHash = hashOtp(DEFAULT_TEST_OTP);
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    await Promise.all(
+      users.map((item) =>
+        AuthOtp.create({
+          phone,
+          userId: item.user.id,
+          userType: item.userType,
+          otpHash,
+          expiresAt,
+        })
+      )
+    );
 
     return res.status(200).send({
       success: true,
       message: "OTP sent successfully",
-      userType,
-      isRegistered: isProfileRegistered(user),
+      userType: selectedUser.userType,
+      roles: users.map((item) => item.userType),
+      requiresRoleSelection: users.length > 1 && !requestedUserType,
+      isRegistered: isProfileRegistered(selectedUser.user),
       testOtp: DEFAULT_TEST_OTP,
     });
   } catch (err) {
@@ -125,6 +156,7 @@ const verifyOtp = async (req, res) => {
   try {
     const phone = normalizePhone(req.body.phone);
     const otp = String(req.body.otp || "").trim();
+    const requestedUserType = req.body.userType;
 
     if (phone.length !== 10 || !otp) {
       return res.status(400).send({
@@ -133,8 +165,14 @@ const verifyOtp = async (req, res) => {
       });
     }
 
+    const otpWhere = { phone, verified: false };
+
+    if (requestedUserType) {
+      otpWhere.userType = requestedUserType;
+    }
+
     const otpRecord = await AuthOtp.findOne({
-      where: { phone, verified: false },
+      where: otpWhere,
       order: [["createdAt", "DESC"]],
     });
 
@@ -182,6 +220,7 @@ const verifyOtp = async (req, res) => {
     const token = generateToken(user, otpRecord.userType);
     await saveToken(user, token, otpRecord.userType);
     await otpRecord.update({ verified: true });
+    const registeredUsers = await findUsersByPhone(phone);
 
     return res.status(200).send({
       success: true,
@@ -189,6 +228,7 @@ const verifyOtp = async (req, res) => {
       token,
       user,
       userType: otpRecord.userType,
+      roles: registeredUsers.map((item) => item.userType),
       isRegistered: isProfileRegistered(user),
     });
   } catch (err) {

@@ -526,7 +526,22 @@ const resolveSearchLocation = async ({ stateId, districtId, pincodeId, postOffic
   return location;
 };
 
-const searchLaboursService = async ({ stateId, districtId, pincodeId, postOfficeId, pincode, district, skill }) => {
+const searchLaboursService = async ({
+  stateId,
+  districtId,
+  pincodeId,
+  postOfficeId,
+  pincode,
+  district,
+  skill,
+  isVerified,
+  verificationStatus,
+  page = 1,
+  limit = 4,
+}) => {
+  const pageNumber = Math.max(Number(page) || 1, 1);
+  const pageLimit = Math.min(Math.max(Number(limit) || 4, 1), 20);
+  const offset = (pageNumber - 1) * pageLimit;
   const location = await resolveSearchLocation({
     stateId,
     districtId,
@@ -537,6 +552,18 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
   });
   const where = { isAvailable: true };
   const baseWhere = { isAvailable: true };
+  const verificationValue =
+    String(verificationStatus || isVerified || "").toLowerCase().trim();
+
+  if (["true", "verified", "1"].includes(verificationValue)) {
+    where.isVerified = true;
+    baseWhere.isVerified = true;
+  }
+
+  if (["false", "unverified", "0"].includes(verificationValue)) {
+    where.isVerified = false;
+    baseWhere.isVerified = false;
+  }
 
   if (location.state) {
     where[Op.and] = where[Op.and] || [];
@@ -586,7 +613,7 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
     order: [["createdAt", "DESC"]],
   });
 
-  const data = searchResult.rows
+  const sortedData = searchResult.rows
     .map((labour) => {
       const json = mapLabourWithSkills(labour);
       const hasSkillMatch = Boolean(requestedSkill);
@@ -606,7 +633,14 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
           Number(sameDistrict) * 10,
       };
     })
-    .sort((a, b) => b.matchScore - a.matchScore || a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      if (b.matchScore !== a.matchScore) {
+        return b.matchScore - a.matchScore;
+      }
+
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || b.id - a.id;
+    });
+  const data = sortedData.slice(offset, offset + pageLimit);
   const countAndFilters = [];
 
   if (location.state) {
@@ -673,7 +707,11 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
     statusCode: 200,
     body: {
       success: true,
-      total: data.length,
+      total: sortedData.length,
+      page: pageNumber,
+      limit: pageLimit,
+      totalPages: Math.ceil(sortedData.length / pageLimit),
+      hasMore: offset + pageLimit < sortedData.length,
       counts: {
         totalAvailable,
         stateCount,
@@ -690,6 +728,7 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
         areaNames: location.areaNames || [],
         postOffice: location.postOfficeList || [],
         skill: requestedSkill || null,
+        verificationStatus: verificationValue || "all",
       },
       data,
     },

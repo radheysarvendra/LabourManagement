@@ -1,0 +1,19 @@
+config:
+  target: "http://localhost:5352"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 50
+      name: "Warm up"
+    - duration: 120
+      arrivalRate: 50
+      name: "1000 users total approx"
+  defaults:
+    headers:
+      Authorization: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjUsInBob25lIjoiNzk4NTg4MjcwMCIsInVzZXJUeXBlIjoibGFib3VyIiwiaWF0IjoxNzc5Njg1Njg4LCJleHAiOjE3ODAyOTA0ODh9.VhXtJqYC-xzjmf03Kq9OEPhONcbUuc5aVLLvH7_m4iI"
+
+scenarios:
+  - name: "Get all labour protected API"
+    flow:
+      - get:
+          url: "/getAllLabour"
