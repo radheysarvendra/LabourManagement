@@ -10,6 +10,8 @@ const bookingController = require("../controller/booking/index");
 const orderController = require("../controller/order/index");
 const authController = require("../middleware/auth/index");
 const roleController = require("../controller/Permission_roles/index");
+const adminController = require("../controller/admin/index");
+const { verifyAdminToken, allowAdminModule } = require("../middleware/adminAuth");
 const { verifyToken } = require("../middleware/auth");
 
 router.get("/", (req, res) => {
@@ -82,6 +84,18 @@ router.delete("/deleteOwnerById/:id", verifyToken, ownerController.deleteOwner);
 router.post("/auth/logout", verifyToken, authController.logout);
 
 
+
+// Admin dashboard routes
+router.post("/api/admin/auth/login", adminController.loginAdmin);
+router.get("/api/admin/profile", verifyAdminToken, adminController.getAdminProfile);
+router.get("/api/admin/dashboard/stats", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getDashboardStats);
+router.post("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canCreate"), adminController.createAdmin);
+router.get("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canView"), adminController.getAdmins);
+router.post("/api/admin/permissions", verifyAdminToken, allowAdminModule("permissions", "canCreate"), adminController.createPermission);
+router.get("/api/admin/labours", verifyAdminToken, allowAdminModule("labours", "canView"), labourController.getAllLabours);
+router.get("/api/admin/owners", verifyAdminToken, allowAdminModule("owners", "canView"), ownerController.getAllOwners);
+router.get("/api/admin/orders", verifyAdminToken, allowAdminModule("orders", "canView"), orderController.getOrders);
+router.put("/api/admin/orders/:id/status", verifyAdminToken, allowAdminModule("orders", "canApprove"), orderController.updateOrderAdminStatus);
 // Role routes
 router.post("/CreateRole", verifyToken, roleController.createRole);
 router.get("/GetAllRoles", verifyToken, roleController.getAllRoles);
@@ -90,3 +104,5 @@ router.put("/updateRoleById/:id", verifyToken, roleController.updateRoleById);
 router.delete("/deleteRoleById/:id", verifyToken, roleController.deleteRoleById);
 
 module.exports = router;
+
+

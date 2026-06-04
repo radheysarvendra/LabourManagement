@@ -4,6 +4,7 @@ const http = require("http");
 
 const { config } = require("./config/db.config");
 const { connectDB } = require("./model/index");
+const { ensureDefaultAdmin } = require("./controller/admin");
 const db = require("./model");
 const { seedSkills } = require("./utils/seedSkills");
 const { seedAddressData } = require("./utils/seedAddressData");
@@ -30,6 +31,7 @@ const runStartupTasks = async () => {
 
 const startServer = async () => {
   await connectDB();
+  await ensureDefaultAdmin();
 
   try {
     await runStartupTasks();
@@ -56,3 +58,6 @@ startServer().catch((error) => {
   console.error("Failed to start server:", error);
   process.exit(1);
 });
+
+
+

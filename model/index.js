@@ -74,6 +74,8 @@ db.address = require("./address")(sequelize, DataTypes);
 db.mobileTokenMap = require("./mobile_token")(sequelize, DataTypes);
 db.authOtp = require("./authOtp")(sequelize, DataTypes);
 db.role = require("./role")(sequelize, DataTypes);
+db.admin = require("./admin")(sequelize, DataTypes);
+db.adminPermission = require("./adminPermission")(sequelize, DataTypes);
 db.booking = require("./booking")(sequelize, DataTypes);
 db.bookingAllocation = require("./bookingAllocation")(sequelize, DataTypes);
 db.order = require("./order")(sequelize, DataTypes);
@@ -267,7 +269,40 @@ db.orderMapping.belongsTo(db.labour, {
   as: "labour",
 });
 
+
+// NOTE - admin role and permissions map
+db.admin.belongsTo(db.role, {
+  foreignKey: "roleId",
+  otherKey: "id",
+  as: "role",
+});
+
+db.role.hasMany(db.admin, {
+  foreignKey: "roleId",
+  sourceKey: "id",
+  as: "admins",
+});
+
+db.adminPermission.belongsTo(db.role, {
+  foreignKey: "roleId",
+  otherKey: "id",
+  as: "role",
+});
+
+db.role.hasMany(db.adminPermission, {
+  foreignKey: "roleId",
+  sourceKey: "id",
+  as: "adminPermissions",
+});
+
+db.admin.hasMany(db.adminPermission, {
+  foreignKey: "roleId",
+  sourceKey: "roleId",
+  as: "permissions",
+});
 db.connectDB = connectDB;
 module.exports =db;
+
+
 
 
