@@ -92,6 +92,11 @@ router.get("/api/admin/dashboard/stats", verifyAdminToken, allowAdminModule("das
 router.post("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canCreate"), adminController.createAdmin);
 router.get("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canView"), adminController.getAdmins);
 router.post("/api/admin/permissions", verifyAdminToken, allowAdminModule("permissions", "canCreate"), adminController.createPermission);
+router.post("/api/admin/roles", verifyAdminToken, allowAdminModule("roles", "canCreate"), roleController.createRole);
+router.get("/api/admin/roles", verifyAdminToken, allowAdminModule("roles", "canView"), roleController.getAllRoles);
+router.get("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canView"), roleController.getRoleById);
+router.put("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canUpdate"), roleController.updateRoleById);
+router.delete("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canDelete"), roleController.deleteRoleById);
 router.get("/api/admin/labours", verifyAdminToken, allowAdminModule("labours", "canView"), labourController.getAllLabours);
 router.get("/api/admin/owners", verifyAdminToken, allowAdminModule("owners", "canView"), ownerController.getAllOwners);
 router.get("/api/admin/orders", verifyAdminToken, allowAdminModule("orders", "canView"), orderController.getOrders);
@@ -104,5 +109,6 @@ router.put("/updateRoleById/:id", verifyToken, roleController.updateRoleById);
 router.delete("/deleteRoleById/:id", verifyToken, roleController.deleteRoleById);
 
 module.exports = router;
+
 
 

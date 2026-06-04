@@ -52,24 +52,32 @@ const getAdminResponse = async (adminId) => {
 };
 
 const ensureDefaultAdmin = async () => {
-  if (!DEFAULT_ADMIN_PASSWORD) {
-    throw new Error("DEFAULT_ADMIN_PASSWORD env var required for default admin setup");
+  const defaultRoles = [
+    { name: "super_admin", description: "Full admin dashboard access", accessLevel: 100 },
+    { name: "admin", description: "Admin dashboard access", accessLevel: 90 },
+    { name: "sub_admin", description: "Limited admin dashboard access", accessLevel: 70 },
+    { name: "field_officer", description: "Field verification and order coordination", accessLevel: 50 },
+    { name: "support", description: "Customer support access", accessLevel: 40 },
+    { name: "verifier", description: "Labour and owner verification access", accessLevel: 30 },
+  ];
+
+  const savedRoles = [];
+
+  for (const item of defaultRoles) {
+    const [role] = await Role.findOrCreate({
+      where: { name: item.name },
+      defaults: item,
+    });
+    savedRoles.push(role);
   }
 
-  const [role] = await Role.findOrCreate({
-    where: { name: "super_admin" },
-    defaults: {
-      description: "Full admin dashboard access",
-      accessLevel: 100,
-    },
-  });
-
+  const superAdminRole = savedRoles.find((role) => role.name === "super_admin") || savedRoles[0];
   const defaultEmail = normalizeEmail(process.env.DEFAULT_ADMIN_EMAIL || "admin@dehaadi.com");
   const existingAdmin = await Admin.findOne({ where: { email: defaultEmail } });
 
   if (!existingAdmin) {
     await Admin.create({
-      roleId: role.id,
+      roleId: superAdminRole.id,
       name: "Super Admin",
       email: defaultEmail,
       passwordHash: hashPassword(DEFAULT_ADMIN_PASSWORD),
@@ -77,7 +85,6 @@ const ensureDefaultAdmin = async () => {
     });
   }
 };
-
 const loginAdmin = async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
@@ -244,3 +251,4 @@ module.exports = {
   createPermission,
   getDashboardStats,
 };
+

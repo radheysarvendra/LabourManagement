@@ -105,7 +105,6 @@ module.exports = (sequelize, DataTypes) => {
       { fields: ["districtId"] },
       { fields: ["pincode"] },
       { fields: ["postOfficeId"] },
-      { fields: ["requiredDate"] },
       { fields: ["status"] },
     ],
   });
