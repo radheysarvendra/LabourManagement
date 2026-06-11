@@ -1,5 +1,6 @@
 const db = require("../../model/index.js");
 const labourService = require("../Labours/service");
+const workAssignmentService = require("../workAssignment/service");
 
 const Order = db.order;
 const OrderMapping = db.orderMapping;
@@ -49,6 +50,35 @@ const getOrderStatus = (requiredCount, allocatedCount) => {
   }
 
   return "allocated";
+};
+
+const normalizeSelectedLabours = (payload = {}, defaultSkill = null) => {
+  const directLabours = Array.isArray(payload.labours) ? payload.labours : [];
+  const labourIds = Array.isArray(payload.labourIds) ? payload.labourIds : [];
+  const merged = [
+    ...directLabours,
+    ...labourIds.map((labourId) => ({ labourId })),
+  ];
+  const seen = new Set();
+
+  return merged
+    .map((labour) => {
+      const labourId = Number(labour.labourId || labour.id);
+
+      if (!labourId || seen.has(labourId)) {
+        return null;
+      }
+
+      seen.add(labourId);
+
+      return {
+        labourId,
+        skillId: labour.skillId || payload.skillId || null,
+        skill: labour.skill || defaultSkill,
+        dailyWage: labour.dailyWage || labour.wage || null,
+      };
+    })
+    .filter(Boolean);
 };
 
 const mapOrder = (order) => {
@@ -137,18 +167,17 @@ const createOrderService = async (payload) => {
       note,
     }, { transaction });
 
-    await OrderMapping.create({
-      orderId: createdOrder.id,
-      ownerId,
-      labourId: null,
-      userType: "owner",
-      skill,
-      status: "requested",
-      adminStatus: "pending",
-    }, { transaction });
-
-    for (const labour of allocatedLabours) {
-      await OrderMapping.create({
+    await OrderMapping.bulkCreate([
+      {
+        orderId: createdOrder.id,
+        ownerId,
+        labourId: null,
+        userType: "owner",
+        skill,
+        status: "requested",
+        adminStatus: "pending",
+      },
+      ...allocatedLabours.map((labour) => ({
         orderId: createdOrder.id,
         ownerId,
         labourId: labour.id,
@@ -157,8 +186,8 @@ const createOrderService = async (payload) => {
         dailyWage: getLabourWageForSkill(labour, skill),
         status: "assigned",
         adminStatus: "pending",
-      }, { transaction });
-    }
+      })),
+    ], { transaction });
 
     return createdOrder;
   });
@@ -244,7 +273,16 @@ const getOrderByIdService = async (id) => {
   };
 };
 
-const updateOrderAdminStatusService = async (id, { adminStatus }) => {
+const updateOrderAdminStatusService = async (id, payload) => {
+  const {
+    adminStatus,
+    middlemanId,
+    staffId,
+    fromDate,
+    toDate,
+    workLocation,
+    notes,
+  } = payload;
   const allowedStatus = ["pending", "approved", "rejected"];
 
   if (!allowedStatus.includes(adminStatus)) {
@@ -263,13 +301,70 @@ const updateOrderAdminStatusService = async (id, { adminStatus }) => {
     };
   }
 
+  const selectedLabours = normalizeSelectedLabours(payload, order.skill);
+  const hasManualLabourSelection =
+    Array.isArray(payload.labours) || Array.isArray(payload.labourIds);
+  const ownerMapping = await OrderMapping.findOne({
+    where: { orderId: id, userType: "owner" },
+  });
+  const allocatedCount = hasManualLabourSelection
+    ? selectedLabours.length
+    : order.labourAllocated;
+
+  if (hasManualLabourSelection && selectedLabours.length > Number(order.labourRequired)) {
+    return {
+      statusCode: 400,
+      body: {
+        success: false,
+        message: "Assigned labour count owner requirement se zyada nahi ho sakta",
+      },
+    };
+  }
+
   await db.sequelize.transaction(async (transaction) => {
     await order.update({
       adminStatus,
+      labourAllocated: adminStatus === "approved" ? allocatedCount : order.labourAllocated,
       status: adminStatus === "approved" ? "admin_approved" : order.status,
     }, { transaction });
 
     await OrderMapping.update({ adminStatus }, { where: { orderId: id }, transaction });
+
+    if (adminStatus === "approved" && hasManualLabourSelection) {
+      await OrderMapping.destroy({
+        where: { orderId: id, userType: "labour" },
+        transaction,
+      });
+
+      await OrderMapping.bulkCreate(selectedLabours.map((labour) => ({
+          orderId: id,
+          ownerId: ownerMapping?.ownerId || null,
+          labourId: labour.labourId,
+          userType: "labour",
+          skill: labour.skill || order.skill,
+          dailyWage: labour.dailyWage,
+          status: "assigned",
+          adminStatus: "approved",
+      })), { transaction });
+    }
+
+    if (adminStatus === "approved") {
+      const assignmentResult = await workAssignmentService.createAssignmentFromOrderService(id, {
+        middlemanId: middlemanId || staffId || null,
+        fromDate,
+        toDate,
+        workLocation,
+        notes,
+        labours: hasManualLabourSelection ? selectedLabours : undefined,
+        replaceLabours: hasManualLabourSelection,
+        status: "upcoming",
+        transaction,
+      });
+
+      if (assignmentResult.statusCode >= 400) {
+        throw new Error(assignmentResult.body?.message || "Work assignment creation failed");
+      }
+    }
   });
 
   return getOrderByIdService(id);

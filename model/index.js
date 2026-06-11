@@ -80,6 +80,10 @@ db.booking = require("./booking")(sequelize, DataTypes);
 db.bookingAllocation = require("./bookingAllocation")(sequelize, DataTypes);
 db.order = require("./order")(sequelize, DataTypes);
 db.orderMapping = require("./orderMapping")(sequelize, DataTypes);
+db.workAssignment = require("./workAssignment")(sequelize, DataTypes);
+db.workAssignmentLabour = require("./workAssignmentLabour")(sequelize, DataTypes);
+db.workAttendance = require("./workAttendance")(sequelize, DataTypes);
+db.workPayment = require("./workPayment")(sequelize, DataTypes);
 
 // NOTE - labour skills map
 db.labour.hasMany(db.labourSkill, {
@@ -264,6 +268,131 @@ db.labour.hasMany(db.orderMapping, {
 });
 
 db.orderMapping.belongsTo(db.labour, {
+  foreignKey: "labourId",
+  otherKey: "id",
+  as: "labour",
+});
+
+// NOTE - work assignments map
+db.order.hasMany(db.workAssignment, {
+  foreignKey: "orderId",
+  sourceKey: "id",
+  as: "workAssignments",
+  onDelete: "CASCADE",
+});
+
+db.workAssignment.belongsTo(db.order, {
+  foreignKey: "orderId",
+  otherKey: "id",
+  as: "order",
+});
+
+db.owner.hasMany(db.workAssignment, {
+  foreignKey: "ownerId",
+  sourceKey: "id",
+  as: "workAssignments",
+});
+
+db.workAssignment.belongsTo(db.owner, {
+  foreignKey: "ownerId",
+  otherKey: "id",
+  as: "owner",
+});
+
+db.admin.hasMany(db.workAssignment, {
+  foreignKey: "middlemanId",
+  sourceKey: "id",
+  as: "middlemanAssignments",
+});
+
+db.workAssignment.belongsTo(db.admin, {
+  foreignKey: "middlemanId",
+  otherKey: "id",
+  as: "middleman",
+});
+
+db.workAssignment.hasMany(db.workAssignmentLabour, {
+  foreignKey: "workAssignmentId",
+  sourceKey: "id",
+  as: "assignmentLabours",
+  onDelete: "CASCADE",
+});
+
+db.workAssignmentLabour.belongsTo(db.workAssignment, {
+  foreignKey: "workAssignmentId",
+  otherKey: "id",
+  as: "workAssignment",
+});
+
+db.labour.hasMany(db.workAssignmentLabour, {
+  foreignKey: "labourId",
+  sourceKey: "id",
+  as: "workAssignmentLabours",
+});
+
+db.workAssignmentLabour.belongsTo(db.labour, {
+  foreignKey: "labourId",
+  otherKey: "id",
+  as: "labour",
+});
+
+db.skill.hasMany(db.workAssignmentLabour, {
+  foreignKey: "skillId",
+  sourceKey: "id",
+  as: "workAssignmentLabours",
+});
+
+db.workAssignmentLabour.belongsTo(db.skill, {
+  foreignKey: "skillId",
+  otherKey: "id",
+  as: "skillDetail",
+});
+
+db.workAssignment.hasMany(db.workAttendance, {
+  foreignKey: "workAssignmentId",
+  sourceKey: "id",
+  as: "attendances",
+  onDelete: "CASCADE",
+});
+
+db.workAttendance.belongsTo(db.workAssignment, {
+  foreignKey: "workAssignmentId",
+  otherKey: "id",
+  as: "workAssignment",
+});
+
+db.labour.hasMany(db.workAttendance, {
+  foreignKey: "labourId",
+  sourceKey: "id",
+  as: "workAttendances",
+});
+
+db.workAttendance.belongsTo(db.labour, {
+  foreignKey: "labourId",
+  otherKey: "id",
+  as: "labour",
+});
+
+db.workAssignment.hasMany(db.workPayment, {
+  foreignKey: "workAssignmentId",
+  sourceKey: "id",
+  as: "payments",
+  onDelete: "CASCADE",
+});
+
+db.workPayment.belongsTo(db.workAssignment, {
+  foreignKey: "workAssignmentId",
+  otherKey: "id",
+  as: "workAssignment",
+});
+
+db.labour.hasMany(db.workPayment, {
+  foreignKey: "labourId",
+  sourceKey: "id",
+  as: "workPayments",
+});
+
+db.workPayment.belongsTo(db.labour, {
   foreignKey: "labourId",
   otherKey: "id",
   as: "labour",

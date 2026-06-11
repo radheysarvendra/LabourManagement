@@ -10,9 +10,19 @@ const Labour = db.labour;
 const Owner = db.owner;
 const Order = db.order;
 const Booking = db.booking;
+const {
+  Op,
+} = require("sequelize");
+const {
+  ADMIN_ACTIONS,
+  ADMIN_MODULES,
+  DEFAULT_ADMIN_ROLES,
+  DEFAULT_ROLE_PERMISSIONS,
+  getDefaultPermissionsForRole,
+} = require("../../constants/adminPermissions");
 
 const TOKEN_SECRET = config.SECRET_KEY;
-const DEFAULT_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD || "Admin@1234";
+const DEFAULT_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD;
 
 const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
 
@@ -52,23 +62,53 @@ const getAdminResponse = async (adminId) => {
 };
 
 const ensureDefaultAdmin = async () => {
-  const defaultRoles = [
-    { name: "super_admin", description: "Full admin dashboard access", accessLevel: 100 },
-    { name: "admin", description: "Admin dashboard access", accessLevel: 90 },
-    { name: "sub_admin", description: "Limited admin dashboard access", accessLevel: 70 },
-    { name: "field_officer", description: "Field verification and order coordination", accessLevel: 50 },
-    { name: "support", description: "Customer support access", accessLevel: 40 },
-    { name: "verifier", description: "Labour and owner verification access", accessLevel: 30 },
-  ];
+  if (!DEFAULT_ADMIN_PASSWORD) {
+    throw new Error("DEFAULT_ADMIN_PASSWORD env var required for default admin setup");
+  }
 
   const savedRoles = [];
 
-  for (const item of defaultRoles) {
+  for (const item of DEFAULT_ADMIN_ROLES) {
     const [role] = await Role.findOrCreate({
       where: { name: item.name },
       defaults: item,
     });
     savedRoles.push(role);
+
+  }
+
+  const permissionRows = savedRoles.flatMap((role) => {
+    const permissions = getDefaultPermissionsForRole(role.name);
+
+    return Object.entries(permissions).map(([moduleName, access]) => ({
+      roleId: role.id,
+      moduleName,
+      canView: !!access.canView,
+      canCreate: !!access.canCreate,
+      canUpdate: !!access.canUpdate,
+      canDelete: !!access.canDelete,
+      canApprove: !!access.canApprove,
+    }));
+  });
+
+  const existingPermissions = await AdminPermission.findAll({
+    where: {
+      [Op.or]: permissionRows.map((permission) => ({
+        roleId: permission.roleId,
+        moduleName: permission.moduleName,
+      })),
+    },
+    attributes: ["roleId", "moduleName"],
+  });
+  const existingKeys = new Set(
+    existingPermissions.map((permission) => `${permission.roleId}:${permission.moduleName}`)
+  );
+  const missingPermissions = permissionRows.filter(
+    (permission) => !existingKeys.has(`${permission.roleId}:${permission.moduleName}`)
+  );
+
+  if (missingPermissions.length > 0) {
+    await AdminPermission.bulkCreate(missingPermissions);
   }
 
   const superAdminRole = savedRoles.find((role) => role.name === "super_admin") || savedRoles[0];
@@ -179,13 +219,26 @@ const createAdmin = async (req, res) => {
 
 const getAdmins = async (req, res) => {
   try {
-    const data = await Admin.findAll({
+    const pageNumber = Math.max(Number(req.query.page) || 1, 1);
+    const pageLimit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+    const offset = (pageNumber - 1) * pageLimit;
+    const result = await Admin.findAndCountAll({
       attributes: { exclude: ["passwordHash"] },
       include: [{ model: Role, as: "role", required: false }],
       order: [["createdAt", "DESC"]],
+      distinct: true,
+      offset,
+      limit: pageLimit,
     });
 
-    return res.status(200).send({ success: true, data });
+    return res.status(200).send({
+      success: true,
+      total: result.count,
+      page: pageNumber,
+      limit: pageLimit,
+      totalPages: Math.ceil(result.count / pageLimit),
+      data: result.rows,
+    });
   } catch (err) {
     return res.status(500).send({ success: false, message: err.message });
   }
@@ -228,6 +281,28 @@ const createPermission = async (req, res) => {
   }
 };
 
+const getPermissionMatrix = async (req, res) => {
+  try {
+    const roles = await Role.findAll({
+      include: [{ model: AdminPermission, as: "adminPermissions", required: false }],
+      order: [["accessLevel", "DESC"], ["name", "ASC"]],
+    });
+
+    return res.status(200).send({
+      success: true,
+      data: {
+        modules: Object.values(ADMIN_MODULES),
+        actions: Object.values(ADMIN_ACTIONS),
+        defaultRoles: DEFAULT_ADMIN_ROLES,
+        defaultPermissions: DEFAULT_ROLE_PERMISSIONS,
+        roles,
+      },
+    });
+  } catch (err) {
+    return res.status(500).send({ success: false, message: err.message });
+  }
+};
+
 const getDashboardStats = async (req, res) => {
   try {
     const [labours, owners, totalOrders, pendingOrders, approvedOrders, bookings] = await Promise.all([
@@ -262,6 +337,7 @@ module.exports = {
   getAdmins,
   getAdminProfile,
   createPermission,
+  getPermissionMatrix,
   getDashboardStats,
 };
 

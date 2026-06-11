@@ -25,7 +25,7 @@ module.exports = (Sequelize) => {
     },
 
     userType: {
-      type: ENUM('labour', 'owner'),
+      type: ENUM('labour', 'owner', 'contractor', 'contractor_customer'),
       allowNull: false,
     },
 

@@ -4,6 +4,17 @@ const msg = require("../../constants/Messages");
 const { getPincodeDetails } = require("../../utils/indiaPost");
 
 const Owner = db.owner;
+const ROLE_TYPES = {
+  OWNER: "owner",
+  CONTRACTOR: "contractor",
+  CONTRACTOR_CUSTOMER: "contractor_customer",
+};
+
+const OWNER_ROLE_TYPES = [
+  ROLE_TYPES.OWNER,
+  ROLE_TYPES.CONTRACTOR,
+  ROLE_TYPES.CONTRACTOR_CUSTOMER,
+];
 
 const WORK_TYPE_API_VALUES = {
   "home repair": "home_repair",
@@ -17,6 +28,36 @@ const normalizeText = (value) => String(value || "").trim().toLowerCase();
 const normalizeWorkType = (workType) => {
   const key = normalizeText(workType).replace(/\s+/g, "_");
   return WORK_TYPE_API_VALUES[key] || "construction";
+};
+
+const normalizeOwnerRole = (value) => {
+  const role = normalizeText(value);
+  return OWNER_ROLE_TYPES.includes(role) ? role : ROLE_TYPES.OWNER;
+};
+
+const buildOwnerSession = async (owner, userType, message, statusCode = 200) => {
+  const token = generateToken(owner, userType);
+  await saveToken(owner, token, userType);
+
+  return {
+    statusCode,
+    body: {
+      success: true,
+      message,
+      token,
+      data: owner,
+      user: owner,
+      profile: owner,
+      type: userType,
+      userType,
+      roleId: `${userType}:${owner.id}`,
+      profileId: owner.id,
+      ownerId: userType === ROLE_TYPES.CONTRACTOR ? null : owner.id,
+      contractorId: userType === ROLE_TYPES.CONTRACTOR ? owner.id : null,
+      roles: [userType],
+      isRegistered: true,
+    },
+  };
 };
 
 const findSelectedPostOffice = (postOfficeList, selectedName) => {
@@ -77,7 +118,10 @@ const createOwnerService = async (payload) => {
     age,
     gender,
     profileImage,
+    role,
+    userType,
   } = payload;
+  const sessionUserType = normalizeOwnerRole(userType || role);
 
   if (!name || !phone || !workType) {
     return {
@@ -97,8 +141,12 @@ const createOwnerService = async (payload) => {
 
   if (existingOwner) {
     return {
-      statusCode: 400,
-      body: { success: false, message: msg.PHONE_ALREADY_REGISTERED },
+      statusCode: 409,
+      body: {
+        success: false,
+        message: "Phone already registered. Please login with OTP.",
+        isRegistered: true,
+      },
     };
   }
 
@@ -122,18 +170,12 @@ const createOwnerService = async (payload) => {
     profileImage,
   });
 
-  const token = generateToken(data, "owner");
-  await saveToken(data, token, "owner");
-
-  return {
-    statusCode: 201,
-    body: {
-      success: true,
-      message: msg.OWNER_CREATED_SUCCESSFULLY,
-      token,
-      data,
-    },
-  };
+  return buildOwnerSession(
+    data,
+    sessionUserType,
+    msg.OWNER_CREATED_SUCCESSFULLY,
+    201,
+  );
 };
 
 const getAllOwnersService = async () => {

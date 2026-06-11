@@ -11,6 +11,25 @@ const AuthOtp = db.authOtp;
 const TOKEN_SECRET = config.SECRET_KEY;
 const DEFAULT_TEST_OTP = process.env.DEFAULT_TEST_OTP || "1234";
 const OTP_EXPIRY_MINUTES = Number(process.env.OTP_EXPIRY_MINUTES || 10);
+const ROLE_TYPES = {
+  LABOUR: "labour",
+  OWNER: "owner",
+  CONTRACTOR: "contractor",
+  CONTRACTOR_CUSTOMER: "contractor_customer",
+};
+const OWNER_LIKE_ROLES = [ROLE_TYPES.OWNER, ROLE_TYPES.CONTRACTOR_CUSTOMER];
+const CONTRACTOR_LIKE_ROLES = [ROLE_TYPES.CONTRACTOR];
+const OWNER_PROFILE_ROLES = [
+  ROLE_TYPES.OWNER,
+  ROLE_TYPES.CONTRACTOR,
+  ROLE_TYPES.CONTRACTOR_CUSTOMER,
+];
+const ROLE_PRIORITY = [
+  ROLE_TYPES.LABOUR,
+  ROLE_TYPES.OWNER,
+  ROLE_TYPES.CONTRACTOR,
+  ROLE_TYPES.CONTRACTOR_CUSTOMER,
+];
 
 const extractTokenFromHeader = (authHeader) => {
   if (!authHeader) return null;
@@ -19,8 +38,23 @@ const extractTokenFromHeader = (authHeader) => {
 
 // Generate Token
 const generateToken = (user, userType) => {
+  const type = userType;
+  const profileId = user.id;
+  const roleId = `${type}:${profileId || user.id || user.phone}`;
+
   return jwt.sign(
-    { id: user.id, phone: user.phone, userType },
+    {
+      id: user.id,
+      userId: user.userId || user.id,
+      roleId,
+      profileId,
+      phone: user.phone,
+      type,
+      userType: type,
+      labourId: type === ROLE_TYPES.LABOUR ? user.id : null,
+      ownerId: OWNER_LIKE_ROLES.includes(type) ? user.id : null,
+      contractorId: CONTRACTOR_LIKE_ROLES.includes(type) ? user.id : null,
+    },
     TOKEN_SECRET,
     { expiresIn: "7d" }
   );
@@ -67,10 +101,10 @@ const verifyOtpHash = (otp, savedHash) => {
 
 const findUserByPhone = async (phone) => {
   const labour = await Labour.findOne({ where: { phone } });
-  if (labour) return { user: labour, userType: "labour" };
+  if (labour) return { user: labour, userType: ROLE_TYPES.LABOUR };
 
   const owner = await Owner.findOne({ where: { phone } });
-  if (owner) return { user: owner, userType: "owner" };
+  if (owner) return { user: owner, userType: ROLE_TYPES.OWNER };
 
   return { user: null, userType: null };
 };
@@ -83,15 +117,54 @@ const findUsersByPhone = async (phone) => {
   const users = [];
 
   if (labour) {
-    users.push({ user: labour, userType: "labour" });
+    users.push({ user: labour, userType: ROLE_TYPES.LABOUR });
   }
 
   if (owner) {
-    users.push({ user: owner, userType: "owner" });
+    users.push({ user: owner, userType: ROLE_TYPES.OWNER });
+    users.push({ user: owner, userType: ROLE_TYPES.CONTRACTOR });
+    users.push({ user: owner, userType: ROLE_TYPES.CONTRACTOR_CUSTOMER });
   }
 
   return users;
 };
+
+const getUserForRole = async (userType, idOrPhone, byPhone = false) => {
+  const where = byPhone ? { phone: idOrPhone } : { id: idOrPhone };
+
+  if (userType === ROLE_TYPES.LABOUR) {
+    return await Labour.findOne({ where });
+  }
+
+  if (OWNER_PROFILE_ROLES.includes(userType)) {
+    return await Owner.findOne({ where });
+  }
+
+  return null;
+};
+
+const sortUsersByRolePriority = (users) =>
+  [...users].sort(
+    (a, b) =>
+      ROLE_PRIORITY.indexOf(a.userType) - ROLE_PRIORITY.indexOf(b.userType)
+  );
+
+const buildAuthResponse = ({ token, user, userType, roles, message = "Login successful" }) => ({
+  success: true,
+  message,
+  token,
+  user,
+  profile: user,
+  type: userType,
+  userType,
+  roleId: `${userType}:${user?.id || user?.phone}`,
+  profileId: user?.id || null,
+  labourId: userType === ROLE_TYPES.LABOUR ? user?.id || null : null,
+  ownerId: OWNER_LIKE_ROLES.includes(userType) ? user?.id || null : null,
+  contractorId: CONTRACTOR_LIKE_ROLES.includes(userType) ? user?.id || null : null,
+  roles,
+  isRegistered: isProfileRegistered(user),
+});
 
 const isProfileRegistered = (user) => Number(user?.status ?? 1) === 1;
 
@@ -107,7 +180,7 @@ const requestOtp = async (req, res) => {
     }
 
     const requestedUserType = req.body.userType;
-    const users = await findUsersByPhone(phone);
+    const users = sortUsersByRolePriority(await findUsersByPhone(phone));
     const selectedUser =
       users.find((item) => item.userType === requestedUserType) ||
       users[0];
@@ -139,6 +212,7 @@ const requestOtp = async (req, res) => {
       success: true,
       message: "OTP sent successfully",
       userType: selectedUser.userType,
+      type: selectedUser.userType,
       roles: users.map((item) => item.userType),
       requiresRoleSelection: users.length > 1 && !requestedUserType,
       isRegistered: isProfileRegistered(selectedUser.user),
@@ -171,10 +245,26 @@ const verifyOtp = async (req, res) => {
       otpWhere.userType = requestedUserType;
     }
 
-    const otpRecord = await AuthOtp.findOne({
-      where: otpWhere,
-      order: [["createdAt", "DESC"]],
-    });
+    let otpRecord = null;
+
+    if (requestedUserType) {
+      otpRecord = await AuthOtp.findOne({
+        where: otpWhere,
+        order: [["createdAt", "DESC"]],
+      });
+    } else {
+      const otpRecords = await AuthOtp.findAll({
+        where: otpWhere,
+        order: [["createdAt", "DESC"]],
+      });
+
+      otpRecord =
+        ROLE_PRIORITY.map((role) =>
+          otpRecords.find((record) => record.userType === role)
+        ).find(Boolean) ||
+        otpRecords[0] ||
+        null;
+    }
 
     if (!otpRecord) {
       return res.status(404).send({
@@ -205,10 +295,7 @@ const verifyOtp = async (req, res) => {
       });
     }
 
-    const user =
-      otpRecord.userType === "labour"
-        ? await Labour.findOne({ where: { id: otpRecord.userId } })
-        : await Owner.findOne({ where: { id: otpRecord.userId } });
+    const user = await getUserForRole(otpRecord.userType, otpRecord.userId);
 
     if (!user) {
       return res.status(404).send({
@@ -220,17 +307,14 @@ const verifyOtp = async (req, res) => {
     const token = generateToken(user, otpRecord.userType);
     await saveToken(user, token, otpRecord.userType);
     await otpRecord.update({ verified: true });
-    const registeredUsers = await findUsersByPhone(phone);
+    const registeredUsers = sortUsersByRolePriority(await findUsersByPhone(phone));
 
-    return res.status(200).send({
-      success: true,
-      message: "Login successful",
+    return res.status(200).send(buildAuthResponse({
       token,
       user,
       userType: otpRecord.userType,
       roles: registeredUsers.map((item) => item.userType),
-      isRegistered: isProfileRegistered(user),
-    });
+    }));
   } catch (err) {
     return res.status(500).send({
       success: false,
@@ -256,10 +340,7 @@ const login = async (req, res) => {
       });
     }
 
-    const user =
-      userType === "labour"
-        ? await Labour.findOne({ where: { phone } })
-        : await Owner.findOne({ where: { phone } });
+    const user = await getUserForRole(userType, phone, true);
 
     if (!user) {
       return res.status(404).send({
@@ -271,14 +352,14 @@ const login = async (req, res) => {
     const token = generateToken(user, userType);
     await saveToken(user, token, userType);
 
-    return res.status(200).send({
-      success: true,
-      message: "Login successful",
+    const registeredUsers = sortUsersByRolePriority(await findUsersByPhone(phone));
+
+    return res.status(200).send(buildAuthResponse({
       token,
       user,
       userType,
-      isRegistered: isProfileRegistered(user),
-    });
+      roles: registeredUsers.map((item) => item.userType),
+    }));
   } catch (err) {
     return res.status(500).send({
       success: false,

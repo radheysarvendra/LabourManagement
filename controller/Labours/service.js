@@ -239,18 +239,26 @@ const createLabourSkillRows = async ({ labourId, skills, skillWages, experienceY
   }
 
   const skillList = [...skillMap.values()];
+  const skillIds = skillList
+    .map((skillItem) => typeof skillItem.raw === "object" ? skillItem.raw.skillId || skillItem.raw.id : null)
+    .filter(Boolean);
+  const skillNames = skillList.map((skillItem) => skillItem.name);
+  const skillDataList = await Skill.findAll({
+    where: {
+      [Op.or]: [
+        ...(skillIds.length ? [{ id: { [Op.in]: skillIds } }] : []),
+        ...skillNames.map((skillName) => ({ skillName: { [Op.iLike]: skillName } })),
+      ],
+    },
+  });
+  const skillsById = new Map(skillDataList.map((skillData) => [Number(skillData.id), skillData]));
+  const skillsByName = new Map(
+    skillDataList.map((skillData) => [normalizeText(skillData.skillName), skillData])
+  );
 
-  for (const [index, skillItem] of skillList.entries()) {
+  const rows = skillList.map((skillItem, index) => {
     const skillId = typeof skillItem.raw === "object" ? skillItem.raw.skillId || skillItem.raw.id : null;
-    const skillData = skillId
-      ? await Skill.findOne({ where: { id: skillId } })
-      : await Skill.findOne({
-        where: {
-          skillName: {
-            [Op.iLike]: skillItem.name,
-          },
-        },
-      });
+    const skillData = (skillId ? skillsById.get(Number(skillId)) : null) || skillsByName.get(normalizeText(skillItem.name));
 
     if (!skillData) {
       const error = new Error(`${skillItem.name} skill master table me nahi mila`);
@@ -260,13 +268,17 @@ const createLabourSkillRows = async ({ labourId, skills, skillWages, experienceY
 
     const itemWage = getSkillItemWage(skillItem.raw);
 
-    await LabourSkill.create({
+    return {
       labourId,
       skillId: skillData.id,
       dailyWage: Number(itemWage ?? getSkillWage(skillWages, skillData.skillName, skillData.defaultWage)),
       isPrimary: index === 0,
       experienceYears: Number(skillItem.raw?.experienceYears ?? experienceYears ?? 0),
-    });
+    };
+  });
+
+  if (rows.length > 0) {
+    await LabourSkill.bulkCreate(rows);
   }
 };
 
@@ -366,6 +378,7 @@ const createLabourService = async (payload) => {
   const token = generateToken(data, "labour");
   await saveToken(data, token, "labour");
   const createdLabour = await Labour.findOne({ where: { id: data.id }, include: labourInclude });
+  const mappedLabour = mapLabourWithSkills(createdLabour);
 
   return {
     statusCode: 201,
@@ -373,7 +386,18 @@ const createLabourService = async (payload) => {
       success: true,
       message: msg.LABOUR_CREATED_SUCCESS,
       token,
-      data: mapLabourWithSkills(createdLabour),
+      data: mappedLabour,
+      user: mappedLabour,
+      profile: mappedLabour,
+      type: "labour",
+      userType: "labour",
+      roleId: `labour:${mappedLabour.id}`,
+      profileId: mappedLabour.id,
+      labourId: mappedLabour.id,
+      ownerId: null,
+      contractorId: null,
+      roles: ["labour"],
+      isRegistered: true,
     },
   };
 };

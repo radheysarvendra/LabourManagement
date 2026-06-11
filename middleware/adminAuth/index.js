@@ -6,6 +6,13 @@ const Admin = db.admin;
 const Role = db.role;
 const AdminPermission = db.adminPermission;
 const TOKEN_SECRET = config.SECRET_KEY;
+const VALID_PERMISSION_ACTIONS = [
+  "canView",
+  "canCreate",
+  "canUpdate",
+  "canDelete",
+  "canApprove",
+];
 
 const extractTokenFromHeader = (authHeader) => {
   if (!authHeader) return null;
@@ -49,6 +56,13 @@ const verifyAdminToken = async (req, res, next) => {
 
 const allowAdminModule = (moduleName, action = "canView") => async (req, res, next) => {
   try {
+    if (!VALID_PERMISSION_ACTIONS.includes(action)) {
+      return res.status(500).send({
+        success: false,
+        message: `Invalid permission action ${action}`,
+      });
+    }
+
     const roleName = String(req.admin?.role?.name || "").toLowerCase();
 
     if (roleName === "super_admin" || roleName === "admin") {

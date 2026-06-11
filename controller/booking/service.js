@@ -156,16 +156,14 @@ const createBookingService = async (payload) => {
       note,
     }, { transaction });
 
-    for (const labour of allocatedLabours) {
-      await BookingAllocation.create({
+    await BookingAllocation.bulkCreate(allocatedLabours.map((labour) => ({
         bookingId: createdBooking.id,
         labourId: labour.id,
         skill,
         dailyWage: getLabourWageForSkill(labour, skill),
         status: "allocated",
         confirmedAt: new Date(),
-      }, { transaction });
-    }
+      })), { transaction });
 
     return createdBooking;
   });

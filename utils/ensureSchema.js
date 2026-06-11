@@ -17,8 +17,28 @@ const ensureIndex = async (queryInterface, tableName, fields, name) => {
   }
 };
 
+const ensureEnumValues = async (sequelize, enumName, values) => {
+  for (const value of values) {
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        ALTER TYPE "${enumName}" ADD VALUE IF NOT EXISTS '${value}';
+      EXCEPTION
+        WHEN undefined_object THEN NULL;
+      END
+      $$;
+    `);
+  }
+};
+
 const ensureSchema = async (db) => {
   const queryInterface = db.sequelize.getQueryInterface();
+  const userTypeEnumValues = [
+    "labour",
+    "owner",
+    "contractor",
+    "contractor_customer",
+  ];
   const stringColumn = {
     type: db.Sequelize.STRING,
     allowNull: true,
@@ -87,6 +107,9 @@ const ensureSchema = async (db) => {
   const bookingColumns = {
     requiredDate: { type: db.Sequelize.DATEONLY, allowNull: true },
   };
+
+  await ensureEnumValues(db.sequelize, "enum_authOtps_userType", userTypeEnumValues);
+  await ensureEnumValues(db.sequelize, "enum_mobile_token_maps_userType", userTypeEnumValues);
 
   for (const [columnName, definition] of Object.entries(labourColumns)) {
     await ensureColumn(queryInterface, "labours", columnName, definition);
