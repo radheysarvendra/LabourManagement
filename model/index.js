@@ -74,6 +74,16 @@ db.address = require("./address")(sequelize, DataTypes);
 db.mobileTokenMap = require("./mobile_token")(sequelize, DataTypes);
 db.authOtp = require("./authOtp")(sequelize, DataTypes);
 db.role = require("./role")(sequelize, DataTypes);
+db.admin = require("./admin")(sequelize, DataTypes);
+db.adminPermission = require("./adminPermission")(sequelize, DataTypes);
+db.booking = require("./booking")(sequelize, DataTypes);
+db.bookingAllocation = require("./bookingAllocation")(sequelize, DataTypes);
+db.order = require("./order")(sequelize, DataTypes);
+db.orderMapping = require("./orderMapping")(sequelize, DataTypes);
+db.workAssignment = require("./workAssignment")(sequelize, DataTypes);
+db.workAssignmentLabour = require("./workAssignmentLabour")(sequelize, DataTypes);
+db.workAttendance = require("./workAttendance")(sequelize, DataTypes);
+db.workPayment = require("./workPayment")(sequelize, DataTypes);
 
 // NOTE - labour skills map
 db.labour.hasMany(db.labourSkill, {
@@ -187,7 +197,241 @@ db.address.belongsTo(db.postOffice, {
   as: "postOffice",
 });
 
+// NOTE - booking allocations map
+db.owner.hasMany(db.booking, {
+  foreignKey: "ownerId",
+  sourceKey: "id",
+  as: "bookings",
+});
+
+db.booking.belongsTo(db.owner, {
+  foreignKey: "ownerId",
+  otherKey: "id",
+  as: "owner",
+});
+
+db.booking.hasMany(db.bookingAllocation, {
+  foreignKey: "bookingId",
+  sourceKey: "id",
+  as: "allocations",
+  onDelete: "CASCADE",
+});
+
+db.bookingAllocation.belongsTo(db.booking, {
+  foreignKey: "bookingId",
+  otherKey: "id",
+  as: "booking",
+});
+
+db.labour.hasMany(db.bookingAllocation, {
+  foreignKey: "labourId",
+  sourceKey: "id",
+  as: "bookingAllocations",
+});
+
+db.bookingAllocation.belongsTo(db.labour, {
+  foreignKey: "labourId",
+  otherKey: "id",
+  as: "labour",
+});
+
+// NOTE - order mappings map
+db.order.hasMany(db.orderMapping, {
+  foreignKey: "orderId",
+  sourceKey: "id",
+  as: "mappings",
+  onDelete: "CASCADE",
+});
+
+db.orderMapping.belongsTo(db.order, {
+  foreignKey: "orderId",
+  otherKey: "id",
+  as: "order",
+});
+
+db.owner.hasMany(db.orderMapping, {
+  foreignKey: "ownerId",
+  sourceKey: "id",
+  as: "orderMappings",
+});
+
+db.orderMapping.belongsTo(db.owner, {
+  foreignKey: "ownerId",
+  otherKey: "id",
+  as: "owner",
+});
+
+db.labour.hasMany(db.orderMapping, {
+  foreignKey: "labourId",
+  sourceKey: "id",
+  as: "orderMappings",
+});
+
+db.orderMapping.belongsTo(db.labour, {
+  foreignKey: "labourId",
+  otherKey: "id",
+  as: "labour",
+});
+
+// NOTE - work assignments map
+db.order.hasMany(db.workAssignment, {
+  foreignKey: "orderId",
+  sourceKey: "id",
+  as: "workAssignments",
+  onDelete: "CASCADE",
+});
+
+db.workAssignment.belongsTo(db.order, {
+  foreignKey: "orderId",
+  otherKey: "id",
+  as: "order",
+});
+
+db.owner.hasMany(db.workAssignment, {
+  foreignKey: "ownerId",
+  sourceKey: "id",
+  as: "workAssignments",
+});
+
+db.workAssignment.belongsTo(db.owner, {
+  foreignKey: "ownerId",
+  otherKey: "id",
+  as: "owner",
+});
+
+db.admin.hasMany(db.workAssignment, {
+  foreignKey: "middlemanId",
+  sourceKey: "id",
+  as: "middlemanAssignments",
+});
+
+db.workAssignment.belongsTo(db.admin, {
+  foreignKey: "middlemanId",
+  otherKey: "id",
+  as: "middleman",
+});
+
+db.workAssignment.hasMany(db.workAssignmentLabour, {
+  foreignKey: "workAssignmentId",
+  sourceKey: "id",
+  as: "assignmentLabours",
+  onDelete: "CASCADE",
+});
+
+db.workAssignmentLabour.belongsTo(db.workAssignment, {
+  foreignKey: "workAssignmentId",
+  otherKey: "id",
+  as: "workAssignment",
+});
+
+db.labour.hasMany(db.workAssignmentLabour, {
+  foreignKey: "labourId",
+  sourceKey: "id",
+  as: "workAssignmentLabours",
+});
+
+db.workAssignmentLabour.belongsTo(db.labour, {
+  foreignKey: "labourId",
+  otherKey: "id",
+  as: "labour",
+});
+
+db.skill.hasMany(db.workAssignmentLabour, {
+  foreignKey: "skillId",
+  sourceKey: "id",
+  as: "workAssignmentLabours",
+});
+
+db.workAssignmentLabour.belongsTo(db.skill, {
+  foreignKey: "skillId",
+  otherKey: "id",
+  as: "skillDetail",
+});
+
+db.workAssignment.hasMany(db.workAttendance, {
+  foreignKey: "workAssignmentId",
+  sourceKey: "id",
+  as: "attendances",
+  onDelete: "CASCADE",
+});
+
+db.workAttendance.belongsTo(db.workAssignment, {
+  foreignKey: "workAssignmentId",
+  otherKey: "id",
+  as: "workAssignment",
+});
+
+db.labour.hasMany(db.workAttendance, {
+  foreignKey: "labourId",
+  sourceKey: "id",
+  as: "workAttendances",
+});
+
+db.workAttendance.belongsTo(db.labour, {
+  foreignKey: "labourId",
+  otherKey: "id",
+  as: "labour",
+});
+
+db.workAssignment.hasMany(db.workPayment, {
+  foreignKey: "workAssignmentId",
+  sourceKey: "id",
+  as: "payments",
+  onDelete: "CASCADE",
+});
+
+db.workPayment.belongsTo(db.workAssignment, {
+  foreignKey: "workAssignmentId",
+  otherKey: "id",
+  as: "workAssignment",
+});
+
+db.labour.hasMany(db.workPayment, {
+  foreignKey: "labourId",
+  sourceKey: "id",
+  as: "workPayments",
+});
+
+db.workPayment.belongsTo(db.labour, {
+  foreignKey: "labourId",
+  otherKey: "id",
+  as: "labour",
+});
+
+
+// NOTE - admin role and permissions map
+db.admin.belongsTo(db.role, {
+  foreignKey: "roleId",
+  otherKey: "id",
+  as: "role",
+});
+
+db.role.hasMany(db.admin, {
+  foreignKey: "roleId",
+  sourceKey: "id",
+  as: "admins",
+});
+
+db.adminPermission.belongsTo(db.role, {
+  foreignKey: "roleId",
+  otherKey: "id",
+  as: "role",
+});
+
+db.role.hasMany(db.adminPermission, {
+  foreignKey: "roleId",
+  sourceKey: "id",
+  as: "adminPermissions",
+});
+
+db.admin.hasMany(db.adminPermission, {
+  foreignKey: "roleId",
+  sourceKey: "roleId",
+  as: "permissions",
+});
 db.connectDB = connectDB;
 module.exports =db;
+
+
 
 

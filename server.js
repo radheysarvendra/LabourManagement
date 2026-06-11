@@ -4,6 +4,7 @@ const http = require("http");
 
 const { config } = require("./config/db.config");
 const { connectDB } = require("./model/index");
+const { ensureDefaultAdmin } = require("./controller/admin");
 const db = require("./model");
 const { seedSkills } = require("./utils/seedSkills");
 const { seedAddressData } = require("./utils/seedAddressData");
@@ -30,16 +31,15 @@ const runStartupTasks = async () => {
 
 const startServer = async () => {
   await connectDB();
+  await ensureDefaultAdmin();
 
-  try {
-    await runStartupTasks();
-  } catch (error) {
-    console.error("Startup seed warning:", error.message);
-  }
+ server.listen(port, "0.0.0.0", () => {
+  console.log(`Server running on port ${port}`);
+});
 
-  server.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-  });
+runStartupTasks()
+  .then(() => console.log("Startup tasks completed"))
+  .catch((error) => console.error("Startup seed warning:", error.message));
 };
 
 server.on("error", (error) => {
@@ -56,3 +56,6 @@ startServer().catch((error) => {
   console.error("Failed to start server:", error);
   process.exit(1);
 });
+
+
+

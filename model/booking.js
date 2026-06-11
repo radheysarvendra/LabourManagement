@@ -1,5 +1,5 @@
 module.exports = (sequelize, DataTypes) => {
-  const Labour = sequelize.define("labour", {
+  const Booking = sequelize.define("booking", {
     id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
@@ -7,36 +7,30 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       unique: true,
     },
-    userId: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-    labourCode: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      unique: true,
-    },
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    phone: {
+    bookingCode: {
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
     },
-    status: {
+    ownerId: {
       type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    ownerName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    ownerPhone: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    categoryName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    skill: {
+      type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: 1,
-    },
-    city: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    village: {
-      type: DataTypes.STRING,
-      allowNull: true,
     },
     stateId: {
       type: DataTypes.INTEGER,
@@ -54,54 +48,44 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
-    district: {
+    state: {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    state: {
+    district: {
       type: DataTypes.STRING,
       allowNull: true,
     },
     pincode: {
       type: DataTypes.STRING,
-      allowNull: true,
-    },
-    area: {
-      type: DataTypes.STRING,
-      allowNull: true,
+      allowNull: false,
     },
     postOffice: {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    address: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-    isAvailable: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: true,
-    },
-    isVerified: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
-    profileImage: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    experienceYears: {
+    labourRequired: {
       type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
+    },
+    allocatedCount: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
       defaultValue: 0,
     },
-    age: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
+    requiredDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
     },
-    gender: {
-      type: DataTypes.ENUM("male", "female"),
+    status: {
+      type: DataTypes.ENUM("pending", "confirmed", "cancelled", "completed"),
       allowNull: false,
+      defaultValue: "pending",
+    },
+    note: {
+      type: DataTypes.TEXT,
+      allowNull: true,
     },
     createdById: {
       type: DataTypes.INTEGER,
@@ -112,9 +96,18 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
     },
   }, {
-    tableName: "labours",
+    tableName: "bookings",
     timestamps: true,
+    indexes: [
+      { fields: ["ownerId"] },
+      { fields: ["skill"] },
+      { fields: ["stateId"] },
+      { fields: ["districtId"] },
+      { fields: ["pincode"] },
+      { fields: ["postOfficeId"] },
+      { fields: ["status"] },
+    ],
   });
 
-  return Labour;
+  return Booking;
 };

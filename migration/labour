@@ -64,6 +64,12 @@ module.exports = {
         defaultValue: true,
       },
 
+      isVerified: {
+        type: Sequelize.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
+
       profileImage: {
         type: Sequelize.STRING,
       },

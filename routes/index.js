@@ -6,8 +6,13 @@ const ownerController = require("../controller/owner/index");
 const locationController = require("../controller/location/index");
 const addressController = require("../controller/address/index");
 const categoryController = require("../controller/category/index");
+const bookingController = require("../controller/booking/index");
+const orderController = require("../controller/order/index");
+const workAssignmentController = require("../controller/workAssignment/index");
 const authController = require("../middleware/auth/index");
 const roleController = require("../controller/Permission_roles/index");
+const adminController = require("../controller/admin/index");
+const { verifyAdminToken, allowAdminModule } = require("../middleware/adminAuth");
 const { verifyToken } = require("../middleware/auth");
 
 router.get("/", (req, res) => {
@@ -46,8 +51,42 @@ router.delete("/api/skills/:id", categoryController.deleteSkill);
 router.get("/api/categories/:categoryId/skills", categoryController.getCategorySkills);
 router.post("/api/categories/:categoryId/skills", categoryController.addSkillToCategory);
 router.delete("/api/categories/:categoryId/skills/:skillId", categoryController.removeSkillFromCategory);
-router.post("/createLabour", labourController.createLabour);           
-router.get("/searchLabour", labourController.searchLabours);
+router.post("/api/bookings", verifyToken, bookingController.createBooking);
+router.get("/api/bookings", verifyToken, bookingController.getBookings);
+router.get("/api/bookings/:id", verifyToken, bookingController.getBookingById);
+router.put("/api/bookings/:id/status", verifyToken, bookingController.updateBookingStatus);
+router.put("/api/booking-allocations/:id/status", verifyToken, bookingController.updateAllocationStatus);
+router.post("/api/orders", verifyToken, orderController.createOrder);
+router.get("/api/orders", verifyToken, orderController.getOrders);
+router.get("/api/orders/owner/:ownerId", verifyToken, (req, res) => {
+  req.query.ownerId = req.params.ownerId;
+  return orderController.getOrders(req, res);
+});
+router.get("/api/orders/labour/:labourId", verifyToken, (req, res) => {
+  req.query.labourId = req.params.labourId;
+  return orderController.getOrders(req, res);
+});
+router.get("/api/orders/:id", verifyToken, orderController.getOrderById);
+router.put("/api/orders/:id/admin-status", verifyAdminToken, allowAdminModule("orders", "canApprove"), orderController.updateOrderAdminStatus);
+router.put("/api/order-mappings/:id/status", verifyToken, orderController.updateOrderMappingStatus);
+router.post("/api/work-assignments", verifyToken, workAssignmentController.createWorkAssignment);
+router.post("/api/orders/:orderId/work-assignment", verifyToken, workAssignmentController.createAssignmentFromOrder);
+router.get("/api/work-assignments", verifyToken, workAssignmentController.getWorkAssignments);
+router.get("/api/work-assignments/:id", verifyToken, workAssignmentController.getWorkAssignmentById);
+router.put("/api/work-assignments/:id", verifyToken, workAssignmentController.updateWorkAssignment);
+router.delete("/api/work-assignments/:id", verifyToken, workAssignmentController.deleteWorkAssignment);
+router.post("/api/work-assignments/:id/labours", verifyToken, workAssignmentController.addLabourToAssignment);
+router.get("/api/work-assignments/:id/labours", verifyToken, workAssignmentController.getAssignmentLabours);
+router.put("/api/work-assignments/:id/labours/:labourId", verifyToken, workAssignmentController.updateAssignmentLabour);
+router.delete("/api/work-assignments/:id/labours/:labourId", verifyToken, workAssignmentController.removeAssignmentLabour);
+router.post("/api/work-assignments/:id/attendance", verifyToken, workAssignmentController.markAttendance);
+router.get("/api/work-assignments/:id/attendance", verifyToken, workAssignmentController.getAttendance);
+router.put("/api/work-assignments/:id/attendance/:attendanceId", verifyToken, workAssignmentController.updateAttendance);
+router.post("/api/work-assignments/:id/payments/generate", verifyToken, workAssignmentController.generatePayment);
+router.get("/api/work-assignments/:id/payments", verifyToken, workAssignmentController.getPayments);
+router.put("/api/work-assignments/:id/payments/:paymentId/status", verifyToken, workAssignmentController.updatePaymentStatus);
+router.post("/createLabour", labourController.createLabour);
+router.get("/searchLabour", verifyToken, labourController.searchLabours);
 router.get("/getAllLabour", verifyToken, labourController.getAllLabours); 
 router.get("/getLabourById/:id",verifyToken, labourController.getLabourById);
 router.put("/updateLabourById/:id", verifyToken, labourController.updateLabourById);
@@ -62,6 +101,40 @@ router.delete("/deleteOwnerById/:id", verifyToken, ownerController.deleteOwner);
 router.post("/auth/logout", verifyToken, authController.logout);
 
 
+
+// Admin dashboard routes
+router.post("/api/admin/auth/login", adminController.loginAdmin);
+router.get("/api/admin/profile", verifyAdminToken, adminController.getAdminProfile);
+router.get("/api/admin/dashboard/stats", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getDashboardStats);
+router.post("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canCreate"), adminController.createAdmin);
+router.get("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canView"), adminController.getAdmins);
+router.post("/api/admin/permissions", verifyAdminToken, allowAdminModule("permissions", "canCreate"), adminController.createPermission);
+router.get("/api/admin/permissions/matrix", verifyAdminToken, allowAdminModule("permissions", "canView"), adminController.getPermissionMatrix);
+router.post("/api/admin/roles", verifyAdminToken, allowAdminModule("roles", "canCreate"), roleController.createRole);
+router.get("/api/admin/roles", verifyAdminToken, allowAdminModule("roles", "canView"), roleController.getAllRoles);
+router.get("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canView"), roleController.getRoleById);
+router.put("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canUpdate"), roleController.updateRoleById);
+router.delete("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canDelete"), roleController.deleteRoleById);
+router.get("/api/admin/labours", verifyAdminToken, allowAdminModule("labours", "canView"), labourController.getAllLabours);
+router.get("/api/admin/owners", verifyAdminToken, allowAdminModule("owners", "canView"), ownerController.getAllOwners);
+router.get("/api/admin/orders", verifyAdminToken, allowAdminModule("orders", "canView"), orderController.getOrders);
+router.put("/api/admin/orders/:id/status", verifyAdminToken, allowAdminModule("orders", "canApprove"), orderController.updateOrderAdminStatus);
+router.get("/api/admin/work-assignments", verifyAdminToken, allowAdminModule("work_assignments", "canView"), workAssignmentController.getWorkAssignments);
+router.get("/api/admin/work-assignments/:id", verifyAdminToken, allowAdminModule("work_assignments", "canView"), workAssignmentController.getWorkAssignmentById);
+router.post("/api/admin/work-assignments", verifyAdminToken, allowAdminModule("work_assignments", "canCreate"), workAssignmentController.createWorkAssignment);
+router.put("/api/admin/work-assignments/:id", verifyAdminToken, allowAdminModule("work_assignments", "canUpdate"), workAssignmentController.updateWorkAssignment);
+router.delete("/api/admin/work-assignments/:id", verifyAdminToken, allowAdminModule("work_assignments", "canDelete"), workAssignmentController.deleteWorkAssignment);
+router.post("/api/admin/orders/:orderId/work-assignment", verifyAdminToken, allowAdminModule("work_assignments", "canCreate"), workAssignmentController.createAssignmentFromOrder);
+router.post("/api/admin/work-assignments/:id/labours", verifyAdminToken, allowAdminModule("work_assignments", "canUpdate"), workAssignmentController.addLabourToAssignment);
+router.get("/api/admin/work-assignments/:id/labours", verifyAdminToken, allowAdminModule("work_assignments", "canView"), workAssignmentController.getAssignmentLabours);
+router.put("/api/admin/work-assignments/:id/labours/:labourId", verifyAdminToken, allowAdminModule("work_assignments", "canUpdate"), workAssignmentController.updateAssignmentLabour);
+router.delete("/api/admin/work-assignments/:id/labours/:labourId", verifyAdminToken, allowAdminModule("work_assignments", "canDelete"), workAssignmentController.removeAssignmentLabour);
+router.post("/api/admin/work-assignments/:id/attendance", verifyAdminToken, allowAdminModule("attendance", "canCreate"), workAssignmentController.markAttendance);
+router.get("/api/admin/work-assignments/:id/attendance", verifyAdminToken, allowAdminModule("attendance", "canView"), workAssignmentController.getAttendance);
+router.put("/api/admin/work-assignments/:id/attendance/:attendanceId", verifyAdminToken, allowAdminModule("attendance", "canUpdate"), workAssignmentController.updateAttendance);
+router.post("/api/admin/work-assignments/:id/payments/generate", verifyAdminToken, allowAdminModule("payments", "canCreate"), workAssignmentController.generatePayment);
+router.get("/api/admin/work-assignments/:id/payments", verifyAdminToken, allowAdminModule("payments", "canView"), workAssignmentController.getPayments);
+router.put("/api/admin/work-assignments/:id/payments/:paymentId/status", verifyAdminToken, allowAdminModule("payments", "canUpdate"), workAssignmentController.updatePaymentStatus);
 // Role routes
 router.post("/CreateRole", verifyToken, roleController.createRole);
 router.get("/GetAllRoles", verifyToken, roleController.getAllRoles);
@@ -70,3 +143,6 @@ router.put("/updateRoleById/:id", verifyToken, roleController.updateRoleById);
 router.delete("/deleteRoleById/:id", verifyToken, roleController.deleteRoleById);
 
 module.exports = router;
+
+
+

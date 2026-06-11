@@ -17,7 +17,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       userType: {
-        type: DataTypes.ENUM("labour", "owner"),
+        type: DataTypes.ENUM("labour", "owner", "contractor", "contractor_customer"),
         allowNull: false,
       },
       otpHash: {

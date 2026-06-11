@@ -1,0 +1,92 @@
+const jwt = require("jsonwebtoken");
+const db = require("../../model/index");
+const { config } = require("../../config/db.config");
+
+const Admin = db.admin;
+const Role = db.role;
+const AdminPermission = db.adminPermission;
+const TOKEN_SECRET = config.SECRET_KEY;
+const VALID_PERMISSION_ACTIONS = [
+  "canView",
+  "canCreate",
+  "canUpdate",
+  "canDelete",
+  "canApprove",
+];
+
+const extractTokenFromHeader = (authHeader) => {
+  if (!authHeader) return null;
+  return authHeader.replace("Bearer ", "").trim();
+};
+
+const verifyAdminToken = async (req, res, next) => {
+  try {
+    const token = extractTokenFromHeader(req.header("Authorization"));
+
+    if (!token) {
+      return res.status(401).send({ success: false, message: "Admin token required" });
+    }
+
+    const decoded = jwt.verify(token, TOKEN_SECRET);
+
+    if (decoded.userType !== "admin") {
+      return res.status(403).send({ success: false, message: "Admin access only" });
+    }
+
+    const admin = await Admin.findOne({
+      where: { id: decoded.adminId, status: "active" },
+      attributes: { exclude: ["passwordHash"] },
+      include: [
+        { model: Role, as: "role", required: false },
+        { model: AdminPermission, as: "permissions", required: false },
+      ],
+    });
+
+    if (!admin) {
+      return res.status(401).send({ success: false, message: "Admin not found or inactive" });
+    }
+
+    req.admin = admin;
+    req.adminToken = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).send({ success: false, message: "Admin token expired or invalid" });
+  }
+};
+
+const allowAdminModule = (moduleName, action = "canView") => async (req, res, next) => {
+  try {
+    if (!VALID_PERMISSION_ACTIONS.includes(action)) {
+      return res.status(500).send({
+        success: false,
+        message: `Invalid permission action ${action}`,
+      });
+    }
+
+    const roleName = String(req.admin?.role?.name || "").toLowerCase();
+
+    if (roleName === "super_admin" || roleName === "admin") {
+      return next();
+    }
+
+    const permission = (req.admin?.permissions || []).find(
+      (item) => String(item.moduleName).toLowerCase() === String(moduleName).toLowerCase()
+    );
+
+    if (!permission || !permission[action]) {
+      return res.status(403).send({
+        success: false,
+        message: `No permission for ${moduleName}`,
+      });
+    }
+
+    next();
+  } catch (err) {
+    return res.status(500).send({ success: false, message: err.message });
+  }
+};
+
+module.exports = {
+  verifyAdminToken,
+  allowAdminModule,
+};

@@ -239,18 +239,26 @@ const createLabourSkillRows = async ({ labourId, skills, skillWages, experienceY
   }
 
   const skillList = [...skillMap.values()];
+  const skillIds = skillList
+    .map((skillItem) => typeof skillItem.raw === "object" ? skillItem.raw.skillId || skillItem.raw.id : null)
+    .filter(Boolean);
+  const skillNames = skillList.map((skillItem) => skillItem.name);
+  const skillDataList = await Skill.findAll({
+    where: {
+      [Op.or]: [
+        ...(skillIds.length ? [{ id: { [Op.in]: skillIds } }] : []),
+        ...skillNames.map((skillName) => ({ skillName: { [Op.iLike]: skillName } })),
+      ],
+    },
+  });
+  const skillsById = new Map(skillDataList.map((skillData) => [Number(skillData.id), skillData]));
+  const skillsByName = new Map(
+    skillDataList.map((skillData) => [normalizeText(skillData.skillName), skillData])
+  );
 
-  for (const [index, skillItem] of skillList.entries()) {
+  const rows = skillList.map((skillItem, index) => {
     const skillId = typeof skillItem.raw === "object" ? skillItem.raw.skillId || skillItem.raw.id : null;
-    const skillData = skillId
-      ? await Skill.findOne({ where: { id: skillId } })
-      : await Skill.findOne({
-        where: {
-          skillName: {
-            [Op.iLike]: skillItem.name,
-          },
-        },
-      });
+    const skillData = (skillId ? skillsById.get(Number(skillId)) : null) || skillsByName.get(normalizeText(skillItem.name));
 
     if (!skillData) {
       const error = new Error(`${skillItem.name} skill master table me nahi mila`);
@@ -260,13 +268,17 @@ const createLabourSkillRows = async ({ labourId, skills, skillWages, experienceY
 
     const itemWage = getSkillItemWage(skillItem.raw);
 
-    await LabourSkill.create({
+    return {
       labourId,
       skillId: skillData.id,
       dailyWage: Number(itemWage ?? getSkillWage(skillWages, skillData.skillName, skillData.defaultWage)),
       isPrimary: index === 0,
       experienceYears: Number(skillItem.raw?.experienceYears ?? experienceYears ?? 0),
-    });
+    };
+  });
+
+  if (rows.length > 0) {
+    await LabourSkill.bulkCreate(rows);
   }
 };
 
@@ -366,6 +378,7 @@ const createLabourService = async (payload) => {
   const token = generateToken(data, "labour");
   await saveToken(data, token, "labour");
   const createdLabour = await Labour.findOne({ where: { id: data.id }, include: labourInclude });
+  const mappedLabour = mapLabourWithSkills(createdLabour);
 
   return {
     statusCode: 201,
@@ -373,7 +386,18 @@ const createLabourService = async (payload) => {
       success: true,
       message: msg.LABOUR_CREATED_SUCCESS,
       token,
-      data: mapLabourWithSkills(createdLabour),
+      data: mappedLabour,
+      user: mappedLabour,
+      profile: mappedLabour,
+      type: "labour",
+      userType: "labour",
+      roleId: `labour:${mappedLabour.id}`,
+      profileId: mappedLabour.id,
+      labourId: mappedLabour.id,
+      ownerId: null,
+      contractorId: null,
+      roles: ["labour"],
+      isRegistered: true,
     },
   };
 };
@@ -526,7 +550,22 @@ const resolveSearchLocation = async ({ stateId, districtId, pincodeId, postOffic
   return location;
 };
 
-const searchLaboursService = async ({ stateId, districtId, pincodeId, postOfficeId, pincode, district, skill }) => {
+const searchLaboursService = async ({
+  stateId,
+  districtId,
+  pincodeId,
+  postOfficeId,
+  pincode,
+  district,
+  skill,
+  isVerified,
+  verificationStatus,
+  page = 1,
+  limit = 4,
+}) => {
+  const pageNumber = Math.max(Number(page) || 1, 1);
+  const pageLimit = Math.min(Math.max(Number(limit) || 4, 1), 20);
+  const offset = (pageNumber - 1) * pageLimit;
   const location = await resolveSearchLocation({
     stateId,
     districtId,
@@ -537,6 +576,18 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
   });
   const where = { isAvailable: true };
   const baseWhere = { isAvailable: true };
+  const verificationValue =
+    String(verificationStatus || isVerified || "").toLowerCase().trim();
+
+  if (["true", "verified", "1"].includes(verificationValue)) {
+    where.isVerified = true;
+    baseWhere.isVerified = true;
+  }
+
+  if (["false", "unverified", "0"].includes(verificationValue)) {
+    where.isVerified = false;
+    baseWhere.isVerified = false;
+  }
 
   if (location.state) {
     where[Op.and] = where[Op.and] || [];
@@ -586,7 +637,7 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
     order: [["createdAt", "DESC"]],
   });
 
-  const data = searchResult.rows
+  const sortedData = searchResult.rows
     .map((labour) => {
       const json = mapLabourWithSkills(labour);
       const hasSkillMatch = Boolean(requestedSkill);
@@ -606,7 +657,14 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
           Number(sameDistrict) * 10,
       };
     })
-    .sort((a, b) => b.matchScore - a.matchScore || a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      if (b.matchScore !== a.matchScore) {
+        return b.matchScore - a.matchScore;
+      }
+
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || b.id - a.id;
+    });
+  const data = sortedData.slice(offset, offset + pageLimit);
   const countAndFilters = [];
 
   if (location.state) {
@@ -673,7 +731,11 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
     statusCode: 200,
     body: {
       success: true,
-      total: data.length,
+      total: sortedData.length,
+      page: pageNumber,
+      limit: pageLimit,
+      totalPages: Math.ceil(sortedData.length / pageLimit),
+      hasMore: offset + pageLimit < sortedData.length,
       counts: {
         totalAvailable,
         stateCount,
@@ -690,6 +752,7 @@ const searchLaboursService = async ({ stateId, districtId, pincodeId, postOffice
         areaNames: location.areaNames || [],
         postOffice: location.postOfficeList || [],
         skill: requestedSkill || null,
+        verificationStatus: verificationValue || "all",
       },
       data,
     },

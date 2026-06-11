@@ -1,3 +1,5 @@
+const OTHER_SKILL = { skillName: "Other", hindi: "अन्य", defaultWage: 0 };
+
 const CATEGORIES = [
   {
     name: "Construction & Building Work",
@@ -13,6 +15,7 @@ const CATEGORIES = [
       { skillName: "Tile Fitting Worker", hindi: "टाइल मिस्त्री", defaultWage: 550 },
       { skillName: "Road Construction", hindi: "सड़क मजदूर", defaultWage: 400 },
       { skillName: "Welding Worker", hindi: "वेल्डर", defaultWage: 650 },
+      OTHER_SKILL,
     ],
   },
   {
@@ -27,6 +30,7 @@ const CATEGORIES = [
       { skillName: "Irrigation", hindi: "सिंचाई मजदूर", defaultWage: 300 },
       { skillName: "Dairy Farm", hindi: "डेयरी मजदूर", defaultWage: 350 },
       { skillName: "Poultry Farm", hindi: "मुर्गी फार्म", defaultWage: 300 },
+      OTHER_SKILL,
     ],
   },
   {
@@ -40,6 +44,7 @@ const CATEGORIES = [
       { skillName: "Loading/Unloading", hindi: "लोडिंग मजदूर", defaultWage: 400 },
       { skillName: "Warehouse Worker", hindi: "गोदाम मजदूर", defaultWage: 380 },
       { skillName: "Assembly Line Worker", hindi: "असेंबली मजदूर", defaultWage: 400 },
+      OTHER_SKILL,
     ],
   },
   {
@@ -53,6 +58,7 @@ const CATEGORIES = [
       { skillName: "Delivery Boy", hindi: "डिलीवरी बॉय", defaultWage: 400 },
       { skillName: "Courier Helper", hindi: "कुरियर हेल्पर", defaultWage: 350 },
       { skillName: "Porter/Coolie", hindi: "कुली", defaultWage: 300 },
+      OTHER_SKILL,
     ],
   },
   {
@@ -66,6 +72,7 @@ const CATEGORIES = [
       { skillName: "Cleaner", hindi: "सफाई कर्मी", defaultWage: 280 },
       { skillName: "Gardener", hindi: "माली", defaultWage: 300 },
       { skillName: "Caretaker", hindi: "देखभालकर्ता", defaultWage: 350 },
+      OTHER_SKILL,
     ],
   },
   {
@@ -79,6 +86,7 @@ const CATEGORIES = [
       { skillName: "Tea Stall Helper", hindi: "चाय दुकान सहायक", defaultWage: 280 },
       { skillName: "Hotel/Dhaba Worker", hindi: "होटल मजदूर", defaultWage: 320 },
       { skillName: "Cash Counter Assistant", hindi: "काउंटर सहायक", defaultWage: 350 },
+      OTHER_SKILL,
     ],
   },
   {
@@ -92,6 +100,7 @@ const CATEGORIES = [
       { skillName: "Mechanic", hindi: "मैकेनिक", defaultWage: 500 },
       { skillName: "Mobile Repair", hindi: "मोबाइल मरम्मत", defaultWage: 450 },
       { skillName: "AC/Fridge Repair", hindi: "AC/फ्रिज मरम्मत", defaultWage: 600 },
+      OTHER_SKILL,
     ],
   },
   {
@@ -105,6 +114,7 @@ const CATEGORIES = [
       { skillName: "Sound/Light Helper", hindi: "साउंड हेल्पर", defaultWage: 400 },
       { skillName: "Catering Helper", hindi: "केटरिंग सहायक", defaultWage: 350 },
       { skillName: "Videographer", hindi: "वीडियोग्राफर", defaultWage: 800 },
+      OTHER_SKILL,
     ],
   },
   {
@@ -119,6 +129,7 @@ const CATEGORIES = [
       { skillName: "Stone Crusher Labour", hindi: "पत्थर क्रशर", defaultWage: 380 },
       { skillName: "Mining Labour", hindi: "खनन मजदूर", defaultWage: 420 },
       { skillName: "Handpump/Boring", hindi: "हैंडपंप/बोरिंग", defaultWage: 500 },
+      OTHER_SKILL,
     ],
   },
 ];

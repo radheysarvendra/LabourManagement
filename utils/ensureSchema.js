@@ -17,8 +17,28 @@ const ensureIndex = async (queryInterface, tableName, fields, name) => {
   }
 };
 
+const ensureEnumValues = async (sequelize, enumName, values) => {
+  for (const value of values) {
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        ALTER TYPE "${enumName}" ADD VALUE IF NOT EXISTS '${value}';
+      EXCEPTION
+        WHEN undefined_object THEN NULL;
+      END
+      $$;
+    `);
+  }
+};
+
 const ensureSchema = async (db) => {
   const queryInterface = db.sequelize.getQueryInterface();
+  const userTypeEnumValues = [
+    "labour",
+    "owner",
+    "contractor",
+    "contractor_customer",
+  ];
   const stringColumn = {
     type: db.Sequelize.STRING,
     allowNull: true,
@@ -44,6 +64,7 @@ const ensureSchema = async (db) => {
     postOffice: stringColumn,
     address: textColumn,
     isAvailable: { type: db.Sequelize.BOOLEAN, allowNull: true, defaultValue: true },
+    isVerified: { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: false },
     profileImage: stringColumn,
     experienceYears: { type: db.Sequelize.INTEGER, allowNull: true, defaultValue: 0 },
     createdById: { type: db.Sequelize.INTEGER, allowNull: true },
@@ -80,6 +101,15 @@ const ensureSchema = async (db) => {
   const categorySkillColumns = {
     isActive: { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
   };
+  const orderColumns = {
+    requiredDate: { type: db.Sequelize.DATEONLY, allowNull: true },
+  };
+  const bookingColumns = {
+    requiredDate: { type: db.Sequelize.DATEONLY, allowNull: true },
+  };
+
+  await ensureEnumValues(db.sequelize, "enum_authOtps_userType", userTypeEnumValues);
+  await ensureEnumValues(db.sequelize, "enum_mobile_token_maps_userType", userTypeEnumValues);
 
   for (const [columnName, definition] of Object.entries(labourColumns)) {
     await ensureColumn(queryInterface, "labours", columnName, definition);
@@ -101,14 +131,25 @@ const ensureSchema = async (db) => {
     await ensureColumn(queryInterface, "categorySkills", columnName, definition);
   }
 
+  for (const [columnName, definition] of Object.entries(orderColumns)) {
+    await ensureColumn(queryInterface, "orders", columnName, definition);
+  }
+
+  for (const [columnName, definition] of Object.entries(bookingColumns)) {
+    await ensureColumn(queryInterface, "bookings", columnName, definition);
+  }
+
   await ensureIndex(queryInterface, "labours", ["stateId"], "idx_labours_state_id");
   await ensureIndex(queryInterface, "labours", ["districtId"], "idx_labours_district_id");
   await ensureIndex(queryInterface, "labours", ["pincodeId"], "idx_labours_pincode_id");
   await ensureIndex(queryInterface, "labours", ["postOfficeId"], "idx_labours_post_office_id");
   await ensureIndex(queryInterface, "labours", ["pincode"], "idx_labours_pincode");
+  await ensureIndex(queryInterface, "labours", ["isVerified"], "idx_labours_is_verified");
   await ensureIndex(queryInterface, "labours", ["labourCode"], "idx_labours_labour_code");
   await ensureIndex(queryInterface, "labourSkills", ["skillId"], "idx_labour_skills_skill_id");
   await ensureIndex(queryInterface, "labourSkills", ["labourId"], "idx_labour_skills_labour_id");
+  await ensureIndex(queryInterface, "orders", ["requiredDate"], "idx_orders_required_date");
+  await ensureIndex(queryInterface, "bookings", ["requiredDate"], "idx_bookings_required_date");
 };
 
 module.exports = {
