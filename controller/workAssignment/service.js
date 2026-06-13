@@ -231,6 +231,13 @@ const createWorkAssignmentService = async (payload, options = {}) => {
     ? await createAssignment(options.transaction)
     : await db.sequelize.transaction(createAssignment);
 
+  if (options.transaction) {
+    return {
+      statusCode: 201,
+      body: { success: true, data: assignment },
+    };
+  }
+
   return getAssignmentByIdService(assignment.id);
 };
 
@@ -298,6 +305,13 @@ const createAssignmentFromOrderService = async (orderId, options = {}) => {
       await updateAssignment(options.transaction);
     } else {
       await db.sequelize.transaction(updateAssignment);
+    }
+
+    if (options.transaction) {
+      return {
+        statusCode: 200,
+        body: { success: true, data: existing },
+      };
     }
 
     return getAssignmentByIdService(existing.id);

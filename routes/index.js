@@ -30,6 +30,26 @@ router.get("/health", (req, res) => {
   });
 });
 
+router.get("/api/status", async (req, res) => {
+  try {
+    const db = require("../model/index");
+    const [labourCount, ownerCount, adminCount] = await Promise.all([
+      db.labour.count(),
+      db.owner.count(),
+      db.admin.count(),
+    ]);
+    res.status(200).send({
+      success: true,
+      status: "ok",
+      db: "connected",
+      counts: { labours: labourCount, owners: ownerCount, admins: adminCount },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).send({ success: false, status: "error", message: err.message });
+  }
+});
+
 // Labour routes  (createLabour → /labour POST)
 router.post("/auth/login", authController.login);
 router.post("/auth/request-otp", authController.requestOtp);
@@ -63,6 +83,10 @@ router.get("/api/orders/owner/:ownerId", verifyToken, (req, res) => {
   return orderController.getOrders(req, res);
 });
 router.get("/api/orders/labour/:labourId", verifyToken, (req, res) => {
+  req.query.labourId = req.params.labourId;
+  return orderController.getOrders(req, res);
+});
+router.get("/api/labour/:labourId/orders", verifyToken, (req, res) => {
   req.query.labourId = req.params.labourId;
   return orderController.getOrders(req, res);
 });
@@ -119,6 +143,7 @@ router.get("/api/admin/labours", verifyAdminToken, allowAdminModule("labours", "
 router.get("/api/admin/owners", verifyAdminToken, allowAdminModule("owners", "canView"), ownerController.getAllOwners);
 router.get("/api/admin/orders", verifyAdminToken, allowAdminModule("orders", "canView"), orderController.getOrders);
 router.put("/api/admin/orders/:id/status", verifyAdminToken, allowAdminModule("orders", "canApprove"), orderController.updateOrderAdminStatus);
+router.put("/api/admin/orders/:orderId/approve", verifyAdminToken, allowAdminModule("orders", "canApprove"), orderController.approveOrder);
 router.get("/api/admin/work-assignments", verifyAdminToken, allowAdminModule("work_assignments", "canView"), workAssignmentController.getWorkAssignments);
 router.get("/api/admin/work-assignments/:id", verifyAdminToken, allowAdminModule("work_assignments", "canView"), workAssignmentController.getWorkAssignmentById);
 router.post("/api/admin/work-assignments", verifyAdminToken, allowAdminModule("work_assignments", "canCreate"), workAssignmentController.createWorkAssignment);

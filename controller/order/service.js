@@ -1,13 +1,16 @@
 const db = require("../../model/index.js");
-const labourService = require("../Labours/service");
 const workAssignmentService = require("../workAssignment/service");
 
 const Order = db.order;
 const OrderMapping = db.orderMapping;
 const Labour = db.labour;
 const Owner = db.owner;
+const Skill = db.skill;
+const Category = db.category;
 
 const orderInclude = [
+  { model: Skill, as: "skillDetail", required: false },
+  { model: Category, as: "categoryDetail", required: false },
   {
     model: OrderMapping,
     as: "mappings",
@@ -31,26 +34,9 @@ const generateOrderCode = async () => {
   return `ORD-${Date.now().toString().slice(-6)}`;
 };
 
-const getLabourWageForSkill = (labour, skillName) => {
-  const skillWages = Array.isArray(labour.skillWages) ? labour.skillWages : [];
-  const matchedSkill = skillWages.find(
-    (item) => String(item.skill || "").toLowerCase() === String(skillName || "").toLowerCase()
-  );
-
-  return Number(matchedSkill?.dailyWage ?? matchedSkill?.wage ?? 0) || null;
-};
-
-const getOrderStatus = (requiredCount, allocatedCount) => {
-  if (allocatedCount <= 0) {
-    return "pending";
-  }
-
-  if (allocatedCount < requiredCount) {
-    return "partially_allocated";
-  }
-
-  return "allocated";
-};
+const getRequiredLabourCount = (payload) => (
+  Number(payload.requiredLabourCount ?? payload.labourRequired) || 1
+);
 
 const normalizeSelectedLabours = (payload = {}, defaultSkill = null) => {
   const directLabours = Array.isArray(payload.labours) ? payload.labours : [];
@@ -84,18 +70,39 @@ const normalizeSelectedLabours = (payload = {}, defaultSkill = null) => {
 const mapOrder = (order) => {
   const json = order.toJSON ? order.toJSON() : order;
   const mappings = Array.isArray(json.mappings) ? json.mappings : [];
+  const labourMappings = mappings.filter((item) => item.userType === "labour");
+  const skillDetail = json.skillDetail || null;
 
   return {
     ...json,
+    requiredLabourCount: json.labourRequired,
+    assignedLabourCount: json.labourAllocated,
+    category: json.categoryDetail
+      ? {
+          id: json.categoryDetail.id,
+          name: json.categoryDetail.name,
+          hindi: json.categoryDetail.hindi,
+        }
+      : null,
+    skill: skillDetail
+      ? {
+          id: skillDetail.id,
+          skillName: skillDetail.skillName,
+          hindi: skillDetail.hindi,
+        }
+      : json.skill,
+    skillName: json.skill,
     ownerMapping: mappings.find((item) => item.userType === "owner") || null,
-    labourMappings: mappings.filter((item) => item.userType === "labour"),
+    labourMappings,
   };
 };
 
 const createOrderService = async (payload) => {
   const {
     ownerId,
+    categoryId,
     categoryName,
+    skillId,
     skill,
     stateId,
     districtId,
@@ -106,10 +113,10 @@ const createOrderService = async (payload) => {
     pincode,
     postOffice,
     requiredDate,
-    labourRequired = 1,
+    address,
     note,
   } = payload;
-  const requiredCount = Number(labourRequired) || 1;
+  const requiredCount = getRequiredLabourCount(payload);
 
   if (!ownerId) {
     return {
@@ -118,7 +125,7 @@ const createOrderService = async (payload) => {
     };
   }
 
-  if (!skill || !pincode) {
+  if ((!skill && !skillId) || !pincode) {
     return {
       statusCode: 400,
       body: { success: false, message: "Skill aur pincode required hai" },
@@ -132,62 +139,64 @@ const createOrderService = async (payload) => {
     };
   }
 
-  const searchResult = await labourService.searchLaboursService({
-    stateId,
-    districtId,
-    pincodeId,
-    postOfficeId,
-    pincode,
-    district,
-    skill,
-    page: 1,
-    limit: requiredCount,
-  });
-  const matchedLabours = searchResult.body?.data || [];
-  const allocatedLabours = matchedLabours.slice(0, requiredCount);
+  const skillData = skillId ? await Skill.findOne({ where: { id: skillId } }) : null;
+  const categoryData = categoryId ? await Category.findOne({ where: { id: categoryId } }) : null;
+  const skillName = skill || skillData?.skillName;
+
+  if (skillId && !skillData) {
+    return {
+      statusCode: 404,
+      body: { success: false, message: "Skill not found" },
+    };
+  }
+
+  if (categoryId && !categoryData) {
+    return {
+      statusCode: 404,
+      body: { success: false, message: "Category not found" },
+    };
+  }
+
+  if (!skillName) {
+    return {
+      statusCode: 404,
+      body: { success: false, message: "Skill not found" },
+    };
+  }
 
   const order = await db.sequelize.transaction(async (transaction) => {
     const createdOrder = await Order.create({
       orderCode: await generateOrderCode(),
-      categoryName,
-      skill,
+      categoryId: categoryId || null,
+      categoryName: categoryName || categoryData?.name || skillData?.category || null,
+      skillId: skillId || null,
+      skill: skillName,
       stateId: stateId || null,
       districtId: districtId || null,
       pincodeId: pincodeId || null,
       postOfficeId: postOfficeId || null,
-      state: state || searchResult.body?.meta?.state || null,
-      district: district || searchResult.body?.meta?.district || null,
+      state: state || null,
+      district: district || null,
       pincode,
-      postOffice: postOffice || searchResult.body?.meta?.postOfficeName || null,
+      postOffice: postOffice || null,
+      address: address || null,
       requiredDate: requiredDate || null,
       labourRequired: requiredCount,
-      labourAllocated: allocatedLabours.length,
-      status: getOrderStatus(requiredCount, allocatedLabours.length),
+      labourAllocated: 0,
+      status: "pending",
       adminStatus: "pending",
       note,
     }, { transaction });
 
-    await OrderMapping.bulkCreate([
-      {
-        orderId: createdOrder.id,
-        ownerId,
-        labourId: null,
-        userType: "owner",
-        skill,
-        status: "requested",
-        adminStatus: "pending",
-      },
-      ...allocatedLabours.map((labour) => ({
-        orderId: createdOrder.id,
-        ownerId,
-        labourId: labour.id,
-        userType: "labour",
-        skill,
-        dailyWage: getLabourWageForSkill(labour, skill),
-        status: "assigned",
-        adminStatus: "pending",
-      })),
-    ], { transaction });
+    await OrderMapping.create({
+      orderId: createdOrder.id,
+      ownerId,
+      labourId: null,
+      userType: "owner",
+      skill: skillName,
+      status: "requested",
+      adminStatus: "pending",
+    }, { transaction });
 
     return createdOrder;
   });
@@ -201,9 +210,9 @@ const createOrderService = async (payload) => {
     statusCode: 201,
     body: {
       success: true,
-      message: "Order created successfully",
+      message: "Request submitted. Admin approval pending.",
       requiredCount,
-      allocatedCount: allocatedLabours.length,
+      allocatedCount: 0,
       data: mapOrder(createdData),
     },
   };
@@ -225,8 +234,9 @@ const getOrdersService = async ({ ownerId, labourId, status, adminStatus, page =
   }
 
   if (ownerId || labourId) {
-    include[0] = {
-      ...include[0],
+    const mappingsIncludeIndex = include.findIndex((item) => item.as === "mappings");
+    include[mappingsIncludeIndex] = {
+      ...include[mappingsIncludeIndex],
       required: true,
       where: {
         ...(ownerId ? { ownerId } : {}),
@@ -311,7 +321,14 @@ const updateOrderAdminStatusService = async (id, payload) => {
     ? selectedLabours.length
     : order.labourAllocated;
 
-  if (hasManualLabourSelection && selectedLabours.length > Number(order.labourRequired)) {
+  if (adminStatus === "approved" && selectedLabours.length < 1) {
+    return {
+      statusCode: 400,
+      body: { success: false, message: "Approval ke liye labourIds required hain" },
+    };
+  }
+
+  if (selectedLabours.length > Number(order.labourRequired)) {
     return {
       statusCode: 400,
       body: {
@@ -321,11 +338,24 @@ const updateOrderAdminStatusService = async (id, payload) => {
     };
   }
 
+  if (selectedLabours.length > 0) {
+    const foundLabours = await Labour.findAll({
+      where: { id: selectedLabours.map((labour) => labour.labourId) },
+    });
+
+    if (foundLabours.length !== selectedLabours.length) {
+      return {
+        statusCode: 404,
+        body: { success: false, message: "One or more selected labours not found" },
+      };
+    }
+  }
+
   await db.sequelize.transaction(async (transaction) => {
     await order.update({
       adminStatus,
       labourAllocated: adminStatus === "approved" ? allocatedCount : order.labourAllocated,
-      status: adminStatus === "approved" ? "admin_approved" : order.status,
+      status: adminStatus === "approved" ? "assigned" : order.status,
     }, { transaction });
 
     await OrderMapping.update({ adminStatus }, { where: { orderId: id }, transaction });
@@ -370,6 +400,25 @@ const updateOrderAdminStatusService = async (id, payload) => {
   return getOrderByIdService(id);
 };
 
+const approveOrderService = async (id, payload) => {
+  const result = await updateOrderAdminStatusService(id, {
+    ...payload,
+    adminStatus: "approved",
+  });
+
+  if (result.statusCode >= 400) {
+    return result;
+  }
+
+  return {
+    statusCode: 200,
+    body: {
+      ...result.body,
+      message: "Order approved and labours assigned.",
+    },
+  };
+};
+
 const updateOrderMappingStatusService = async (id, { status }) => {
   const allowedStatus = ["requested", "assigned", "accepted", "rejected", "completed"];
 
@@ -402,5 +451,6 @@ module.exports = {
   getOrdersService,
   getOrderByIdService,
   updateOrderAdminStatusService,
+  approveOrderService,
   updateOrderMappingStatusService,
 };

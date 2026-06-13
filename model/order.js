@@ -16,6 +16,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
+    categoryId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    skillId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     skill: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -52,6 +60,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
+    address: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
     labourRequired: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -67,7 +79,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
     },
     status: {
-      type: DataTypes.ENUM("pending", "partially_allocated", "allocated", "admin_approved", "completed", "cancelled"),
+      type: DataTypes.ENUM("pending", "partially_allocated", "allocated", "assigned", "confirmed", "admin_approved", "completed", "cancelled"),
       allowNull: false,
       defaultValue: "pending",
     },
@@ -86,6 +98,8 @@ module.exports = (sequelize, DataTypes) => {
     indexes: [
       { fields: ["orderCode"] },
       { fields: ["skill"] },
+      { fields: ["categoryId"] },
+      { fields: ["skillId"] },
       { fields: ["stateId"] },
       { fields: ["districtId"] },
       { fields: ["pincode"] },

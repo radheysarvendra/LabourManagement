@@ -16,7 +16,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "seed:admin": "node seeders/seedAdmin.js"
+    "seed:admin": "node seeders/seedAdmin.js",
+    "db:backup:check": "node scripts/syncLiveToLocal.js --check",
+    "db:backup": "node scripts/syncLiveToLocal.js",
+    "db:sync-local": "node scripts/syncLiveToLocal.js --restore"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

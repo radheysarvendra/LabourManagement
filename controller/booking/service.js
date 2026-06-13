@@ -131,8 +131,6 @@ const createBookingService = async (payload) => {
     };
   }
 
-  const allocatedLabours = matchedLabours.slice(0, requiredCount);
-
   const booking = await db.sequelize.transaction(async (transaction) => {
     const createdBooking = await Booking.create({
       bookingCode: await generateBookingCode(),
@@ -151,19 +149,10 @@ const createBookingService = async (payload) => {
       postOffice: postOffice || searchResult.body?.meta?.postOfficeName || null,
       requiredDate: requiredDate || null,
       labourRequired: requiredCount,
-      allocatedCount: allocatedLabours.length,
-      status: "confirmed",
+      allocatedCount: 0,
+      status: "pending",
       note,
     }, { transaction });
-
-    await BookingAllocation.bulkCreate(allocatedLabours.map((labour) => ({
-        bookingId: createdBooking.id,
-        labourId: labour.id,
-        skill,
-        dailyWage: getLabourWageForSkill(labour, skill),
-        status: "allocated",
-        confirmedAt: new Date(),
-      })), { transaction });
 
     return createdBooking;
   });
@@ -177,7 +166,9 @@ const createBookingService = async (payload) => {
     statusCode: 201,
     body: {
       success: true,
-      message: "Booking confirmed successfully",
+      message: "Booking request submitted. Admin approval pending.",
+      requiredCount,
+      allocatedCount: 0,
       data: mapBooking(createdData),
     },
   };

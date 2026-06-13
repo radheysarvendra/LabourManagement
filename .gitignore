@@ -10,3 +10,5 @@
 /private.json
 
 # /helpers/init_redis.jsnewrelic_agent.log
+
+/backups

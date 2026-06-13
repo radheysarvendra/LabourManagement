@@ -102,6 +102,9 @@ const ensureSchema = async (db) => {
     isActive: { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
   };
   const orderColumns = {
+    categoryId: { type: db.Sequelize.INTEGER, allowNull: true },
+    skillId: { type: db.Sequelize.INTEGER, allowNull: true },
+    address: textColumn,
     requiredDate: { type: db.Sequelize.DATEONLY, allowNull: true },
   };
   const bookingColumns = {
@@ -110,6 +113,7 @@ const ensureSchema = async (db) => {
 
   await ensureEnumValues(db.sequelize, "enum_authOtps_userType", userTypeEnumValues);
   await ensureEnumValues(db.sequelize, "enum_mobile_token_maps_userType", userTypeEnumValues);
+  await ensureEnumValues(db.sequelize, "enum_orders_status", ["assigned", "confirmed"]);
 
   for (const [columnName, definition] of Object.entries(labourColumns)) {
     await ensureColumn(queryInterface, "labours", columnName, definition);
@@ -149,6 +153,8 @@ const ensureSchema = async (db) => {
   await ensureIndex(queryInterface, "labourSkills", ["skillId"], "idx_labour_skills_skill_id");
   await ensureIndex(queryInterface, "labourSkills", ["labourId"], "idx_labour_skills_labour_id");
   await ensureIndex(queryInterface, "orders", ["requiredDate"], "idx_orders_required_date");
+  await ensureIndex(queryInterface, "orders", ["categoryId"], "idx_orders_category_id");
+  await ensureIndex(queryInterface, "orders", ["skillId"], "idx_orders_skill_id");
   await ensureIndex(queryInterface, "bookings", ["requiredDate"], "idx_bookings_required_date");
 };
 

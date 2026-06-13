@@ -1,5 +1,6 @@
 const { Sequelize, DataTypes } = require("sequelize");
 const { config } = require("../config/db.config");
+const { ensureSchema } = require("../utils/ensureSchema");
 const shouldSyncDatabase = process.env.ENABLE_DB_SYNC !== "false";
 
 const commonOptions = {
@@ -46,10 +47,10 @@ const connectDB = async () => {
     console.log("PostgreSQL Connected Successfully");
 
     if (shouldSyncDatabase) {
-      await sequelize.sync({
-        alter: process.env.NODE_ENV !== "production",
-        force: false,
-      });
+      // alter:false → only creates missing tables, never modifies existing ones (prevents data loss)
+      await sequelize.sync({ alter: false, force: false });
+      // ensureSchema safely adds missing columns one-by-one using ADD COLUMN IF NOT EXISTS
+      await ensureSchema(db);
       console.log("Database models are ready");
     }
 
@@ -271,6 +272,30 @@ db.orderMapping.belongsTo(db.labour, {
   foreignKey: "labourId",
   otherKey: "id",
   as: "labour",
+});
+
+db.order.belongsTo(db.skill, {
+  foreignKey: "skillId",
+  otherKey: "id",
+  as: "skillDetail",
+});
+
+db.skill.hasMany(db.order, {
+  foreignKey: "skillId",
+  sourceKey: "id",
+  as: "orders",
+});
+
+db.order.belongsTo(db.category, {
+  foreignKey: "categoryId",
+  otherKey: "id",
+  as: "categoryDetail",
+});
+
+db.category.hasMany(db.order, {
+  foreignKey: "categoryId",
+  sourceKey: "id",
+  as: "orders",
 });
 
 // NOTE - work assignments map
