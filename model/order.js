@@ -98,8 +98,6 @@ module.exports = (sequelize, DataTypes) => {
     indexes: [
       { fields: ["orderCode"] },
       { fields: ["skill"] },
-      { fields: ["categoryId"] },
-      { fields: ["skillId"] },
       { fields: ["stateId"] },
       { fields: ["districtId"] },
       { fields: ["pincode"] },
