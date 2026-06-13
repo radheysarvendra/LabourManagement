@@ -48,6 +48,18 @@ const updateOrderAdminStatus = async (req,res) => {
   }
 };
 
+const approveOrder = async (req,res) => {
+  try {
+    const result = await orderService.approveOrderService(req.params.orderId || req.params.id, req.body);
+    return res.status(result.statusCode).send(result.body);
+  } catch (err) {
+    return res.status(err.statusCode || 500).send({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
 const updateOrderMappingStatus = async (req,res) => {
   try {
     const result = await orderService.updateOrderMappingStatusService(req.params.id, req.body);
@@ -65,5 +77,6 @@ module.exports = {
   getOrders,
   getOrderById,
   updateOrderAdminStatus,
+  approveOrder,
   updateOrderMappingStatus,
 };
