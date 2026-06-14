@@ -7,12 +7,12 @@ const ensureColumn = async (queryInterface, tableName, columnName, definition) =
   }
 };
 
-const ensureIndex = async (queryInterface, tableName, fields, name) => {
+const ensureIndex = async (queryInterface, tableName, fields, name, options = {}) => {
   const indexes = await queryInterface.showIndex(tableName);
   const exists = indexes.some((index) => index.name === name);
 
   if (!exists) {
-    await queryInterface.addIndex(tableName, fields, { name });
+    await queryInterface.addIndex(tableName, fields, { name, ...options });
     console.log(`Added missing index ${name}`);
   }
 };
@@ -156,6 +156,13 @@ const ensureSchema = async (db) => {
   await ensureIndex(queryInterface, "orders", ["categoryId"], "idx_orders_category_id");
   await ensureIndex(queryInterface, "orders", ["skillId"], "idx_orders_skill_id");
   await ensureIndex(queryInterface, "bookings", ["requiredDate"], "idx_bookings_required_date");
+  await ensureIndex(
+    queryInterface,
+    "workAssignmentLabours",
+    ["workAssignmentId", "labourId"],
+    "work_assignment_labours_unique_assignment_labour",
+    { unique: true }
+  );
 };
 
 module.exports = {

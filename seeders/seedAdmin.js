@@ -1,3 +1,4 @@
+require("dotenv").config();
 const { connectDB } = require("../model");
 const { ensureDefaultAdmin } = require("../controller/admin");
 
