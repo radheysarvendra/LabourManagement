@@ -305,6 +305,11 @@ db.order.hasMany(db.workAssignment, {
   as: "workAssignments",
   onDelete: "CASCADE",
 });
+db.order.hasOne(db.workAssignment, {
+  foreignKey: "orderId",
+  sourceKey: "id",
+  as: "workAssignment",
+});
 
 db.workAssignment.belongsTo(db.order, {
   foreignKey: "orderId",

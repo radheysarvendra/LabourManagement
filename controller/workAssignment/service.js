@@ -369,7 +369,13 @@ const getWorkAssignmentsService = async ({
       page: pageNumber,
       limit: pageLimit,
       totalPages: Math.ceil(result.count / pageLimit),
-      data: result.rows,
+      data: result.rows.map((row) => {
+        const json = row.toJSON ? row.toJSON() : row;
+        return {
+          ...json,
+          labourCount: Array.isArray(json.assignmentLabours) ? json.assignmentLabours.length : 0,
+        };
+      }),
     },
   };
 };
@@ -732,7 +738,14 @@ const getPaymentsService = async ({ workAssignmentId, labourId, paymentStatus, p
       page: pageNumber,
       limit: pageLimit,
       totalPages: Math.ceil(result.count / pageLimit),
-      data: result.rows,
+      data: result.rows.map((row) => {
+        const json = row.toJSON ? row.toJSON() : row;
+        return {
+          ...json,
+          daysWorked: (json.presentDays || 0) + (json.halfDays || 0) * 0.5,
+          totalAmount: json.netAmount,
+        };
+      }),
     },
   };
 };

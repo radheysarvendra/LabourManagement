@@ -7,10 +7,12 @@ const Labour = db.labour;
 const Owner = db.owner;
 const Skill = db.skill;
 const Category = db.category;
+const WorkAssignment = db.workAssignment;
 
 const orderInclude = [
   { model: Skill, as: "skillDetail", required: false },
   { model: Category, as: "categoryDetail", required: false },
+  { model: WorkAssignment, as: "workAssignment", required: false, attributes: ["id"] },
   {
     model: OrderMapping,
     as: "mappings",
@@ -92,6 +94,7 @@ const mapOrder = (order) => {
         }
       : json.skill,
     skillName: json.skill,
+    workAssignmentId: json.workAssignment?.id || null,
     ownerMapping: mappings.find((item) => item.userType === "owner") || null,
     labourMappings,
   };
@@ -344,6 +347,8 @@ const updateOrderAdminStatusService = async (id, payload) => {
     }
   }
 
+  let createdWorkAssignmentId = null;
+
   await db.sequelize.transaction(async (transaction) => {
     await order.update({
       adminStatus,
@@ -387,10 +392,18 @@ const updateOrderAdminStatusService = async (id, payload) => {
       if (assignmentResult.statusCode >= 400) {
         throw new Error(assignmentResult.body?.message || "Work assignment creation failed");
       }
+
+      createdWorkAssignmentId = assignmentResult.body?.data?.id || null;
     }
   });
 
-  return getOrderByIdService(id);
+  const orderResult = await getOrderByIdService(id);
+
+  if (orderResult.statusCode === 200 && createdWorkAssignmentId) {
+    orderResult.body.workAssignmentId = createdWorkAssignmentId;
+  }
+
+  return orderResult;
 };
 
 const approveOrderService = async (id, payload) => {
