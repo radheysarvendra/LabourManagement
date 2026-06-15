@@ -156,13 +156,17 @@ const ensureSchema = async (db) => {
   await ensureIndex(queryInterface, "orders", ["categoryId"], "idx_orders_category_id");
   await ensureIndex(queryInterface, "orders", ["skillId"], "idx_orders_skill_id");
   await ensureIndex(queryInterface, "bookings", ["requiredDate"], "idx_bookings_required_date");
-  await ensureIndex(
-    queryInterface,
-    "workAssignmentLabours",
-    ["workAssignmentId", "labourId"],
-    "work_assignment_labours_unique_assignment_labour",
-    { unique: true }
-  );
+  try {
+    await ensureIndex(
+      queryInterface,
+      "workAssignmentLabours",
+      ["workAssignmentId", "labourId"],
+      "work_assignment_labours_unique_assignment_labour",
+      { unique: true }
+    );
+  } catch (e) {
+    console.warn("Could not add unique index on workAssignmentLabours (duplicate rows may exist):", e.message);
+  }
 };
 
 module.exports = {
