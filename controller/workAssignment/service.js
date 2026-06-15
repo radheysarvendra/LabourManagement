@@ -77,8 +77,11 @@ const syncAssignmentLabours = async (
   const normalizedLabours = normalizeAssignmentLabours(labours, defaultSkill);
 
   if (replace) {
+    await WorkAssignmentLabour.destroy({ where: { workAssignmentId }, transaction });
+  } else if (normalizedLabours.length > 0) {
+    // Remove existing rows for these specific labours to avoid duplicates without needing a DB constraint
     await WorkAssignmentLabour.destroy({
-      where: { workAssignmentId },
+      where: { workAssignmentId, labourId: normalizedLabours.map((l) => l.labourId) },
       transaction,
     });
   }
@@ -86,17 +89,7 @@ const syncAssignmentLabours = async (
   if (normalizedLabours.length > 0) {
     await WorkAssignmentLabour.bulkCreate(
       normalizedLabours.map((labour) => ({ workAssignmentId, ...labour })),
-      {
-        transaction,
-        updateOnDuplicate: [
-          "skillId",
-          "skill",
-          "dailyWage",
-          "assignmentStatus",
-          "joinedAt",
-          "updatedAt",
-        ],
-      }
+      { transaction }
     );
   }
 
@@ -400,7 +393,8 @@ const addLabourToAssignmentService = async (workAssignmentId, payload) => {
     };
   }
 
-  await WorkAssignmentLabour.upsert({
+  await WorkAssignmentLabour.destroy({ where: { workAssignmentId, labourId } });
+  await WorkAssignmentLabour.create({
     workAssignmentId,
     labourId,
     skillId: skillId || null,

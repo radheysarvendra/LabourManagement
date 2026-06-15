@@ -321,13 +321,6 @@ const updateOrderAdminStatusService = async (id, payload) => {
     ? selectedLabours.length
     : order.labourAllocated;
 
-  if (adminStatus === "approved" && selectedLabours.length < 1) {
-    return {
-      statusCode: 400,
-      body: { success: false, message: "Approval ke liye labourIds required hain" },
-    };
-  }
-
   if (selectedLabours.length > Number(order.labourRequired)) {
     return {
       statusCode: 400,
