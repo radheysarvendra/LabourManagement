@@ -157,6 +157,7 @@ const ensureSchema = async (db) => {
   await ensureIndex(queryInterface, "orders", ["requiredDate"], "idx_orders_required_date");
   await ensureIndex(queryInterface, "orders", ["categoryId"], "idx_orders_category_id");
   await ensureIndex(queryInterface, "orders", ["skillId"], "idx_orders_skill_id");
+  await ensureIndex(queryInterface, "orders", ["needType"], "idx_orders_need_type");
   await ensureIndex(queryInterface, "bookings", ["requiredDate"], "idx_bookings_required_date");
   try {
     await ensureIndex(
