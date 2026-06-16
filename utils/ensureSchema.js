@@ -106,6 +106,7 @@ const ensureSchema = async (db) => {
     skillId: { type: db.Sequelize.INTEGER, allowNull: true },
     address: textColumn,
     requiredDate: { type: db.Sequelize.DATEONLY, allowNull: true },
+    needType: { type: db.Sequelize.ENUM("labour", "contractor"), allowNull: false, defaultValue: "labour" },
   };
   const bookingColumns = {
     requiredDate: { type: db.Sequelize.DATEONLY, allowNull: true },
@@ -114,6 +115,7 @@ const ensureSchema = async (db) => {
   await ensureEnumValues(db.sequelize, "enum_authOtps_userType", userTypeEnumValues);
   await ensureEnumValues(db.sequelize, "enum_mobile_token_maps_userType", userTypeEnumValues);
   await ensureEnumValues(db.sequelize, "enum_orders_status", ["assigned", "confirmed"]);
+  await ensureEnumValues(db.sequelize, "enum_orderMappings_userType", ["contractor"]);
 
   for (const [columnName, definition] of Object.entries(labourColumns)) {
     await ensureColumn(queryInterface, "labours", columnName, definition);

@@ -40,6 +40,11 @@ const getRequiredLabourCount = (payload) => (
   Number(payload.requiredLabourCount ?? payload.labourRequired) || 1
 );
 
+const normalizeNeedType = (payload = {}) => {
+  const raw = payload.needType ?? payload.orderType ?? payload.bookingFor ?? payload.requestedProviderRole;
+  return raw === "contractor" ? "contractor" : "labour";
+};
+
 const normalizeSelectedLabours = (payload = {}, defaultSkill = null) => {
   const directLabours = Array.isArray(payload.labours) ? payload.labours : [];
   const labourIds = Array.isArray(payload.labourIds) ? payload.labourIds : [];
@@ -73,7 +78,9 @@ const mapOrder = (order) => {
   const json = order.toJSON ? order.toJSON() : order;
   const mappings = Array.isArray(json.mappings) ? json.mappings : [];
   const labourMappings = mappings.filter((item) => item.userType === "labour");
+  const contractorMappings = mappings.filter((item) => item.userType === "contractor");
   const skillDetail = json.skillDetail || null;
+  const needType = json.needType || "labour";
 
   return {
     ...json,
@@ -94,9 +101,16 @@ const mapOrder = (order) => {
         }
       : json.skill,
     skillName: json.skill,
+    needType,
+    orderType: needType,
+    bookingFor: needType,
+    requestedProviderRole: needType,
     workAssignmentId: json.workAssignment?.id || null,
     ownerMapping: mappings.find((item) => item.userType === "owner") || null,
+    contractorMapping: contractorMappings[0] || null,
+    contractorId: contractorMappings[0]?.ownerId || null,
     labourMappings,
+    contractorMappings,
   };
 };
 
@@ -120,6 +134,7 @@ const createOrderService = async (payload) => {
     note,
   } = payload;
   const requiredCount = getRequiredLabourCount(payload);
+  const needType = normalizeNeedType(payload);
 
   if (!ownerId) {
     return {
@@ -188,6 +203,7 @@ const createOrderService = async (payload) => {
       labourAllocated: 0,
       status: "pending",
       adminStatus: "pending",
+      needType,
       note,
     }, { transaction });
 
@@ -195,7 +211,7 @@ const createOrderService = async (payload) => {
       orderId: createdOrder.id,
       ownerId,
       labourId: null,
-      userType: "owner",
+      userType: needType === "contractor" ? "contractor" : "owner",
       skill: skillName,
       status: "requested",
       adminStatus: "pending",
@@ -221,12 +237,25 @@ const createOrderService = async (payload) => {
   };
 };
 
-const getOrdersService = async ({ ownerId, labourId, status, adminStatus, page = 1, limit = 20 }) => {
+const getOrdersService = async ({
+  ownerId,
+  labourId,
+  contractorId,
+  status,
+  adminStatus,
+  needType,
+  orderType,
+  bookingFor,
+  requestedProviderRole,
+  page = 1,
+  limit = 20,
+}) => {
   const pageNumber = Math.max(Number(page) || 1, 1);
   const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
   const offset = (pageNumber - 1) * pageLimit;
   const where = {};
   const include = [...orderInclude];
+  const resolvedNeedType = needType ?? orderType ?? bookingFor ?? requestedProviderRole;
 
   if (status) {
     where.status = status;
@@ -236,14 +265,19 @@ const getOrdersService = async ({ ownerId, labourId, status, adminStatus, page =
     where.adminStatus = adminStatus;
   }
 
-  if (ownerId || labourId) {
+  if (resolvedNeedType) {
+    where.needType = resolvedNeedType === "contractor" ? "contractor" : "labour";
+  }
+
+  if (ownerId || labourId || contractorId) {
     const mappingsIncludeIndex = include.findIndex((item) => item.as === "mappings");
     include[mappingsIncludeIndex] = {
       ...include[mappingsIncludeIndex],
       required: true,
       where: {
-        ...(ownerId ? { ownerId } : {}),
+        ...(ownerId ? { ownerId, userType: "owner" } : {}),
         ...(labourId ? { labourId, userType: "labour" } : {}),
+        ...(contractorId ? { ownerId: contractorId, userType: "contractor" } : {}),
       },
     };
   }
@@ -314,17 +348,33 @@ const updateOrderAdminStatusService = async (id, payload) => {
     };
   }
 
-  const selectedLabours = normalizeSelectedLabours(payload, order.skill);
-  const hasManualLabourSelection =
-    Array.isArray(payload.labours) || Array.isArray(payload.labourIds);
+  const isContractorOrder = order.needType === "contractor";
   const ownerMapping = await OrderMapping.findOne({
     where: { orderId: id, userType: "owner" },
   });
+
+  const selectedLabours = isContractorOrder ? [] : normalizeSelectedLabours(payload, order.skill);
+  const hasManualLabourSelection =
+    !isContractorOrder && (Array.isArray(payload.labours) || Array.isArray(payload.labourIds));
+
+  const selectedContractorIds = isContractorOrder
+    ? [
+        ...(Array.isArray(payload.contractorIds) ? payload.contractorIds : []),
+        ...(payload.contractorId ? [payload.contractorId] : []),
+      ]
+        .map((value) => Number(value))
+        .filter((value, index, arr) => value && arr.indexOf(value) === index)
+    : [];
+  const hasManualContractorSelection =
+    isContractorOrder && (Array.isArray(payload.contractorIds) || payload.contractorId != null);
+
   const allocatedCount = hasManualLabourSelection
     ? selectedLabours.length
-    : order.labourAllocated;
+    : hasManualContractorSelection
+      ? selectedContractorIds.length
+      : order.labourAllocated;
 
-  if (selectedLabours.length > Number(order.labourRequired)) {
+  if (!isContractorOrder && selectedLabours.length > Number(order.labourRequired)) {
     return {
       statusCode: 400,
       body: {
@@ -343,6 +393,19 @@ const updateOrderAdminStatusService = async (id, payload) => {
       return {
         statusCode: 404,
         body: { success: false, message: "One or more selected labours not found" },
+      };
+    }
+  }
+
+  if (selectedContractorIds.length > 0) {
+    const foundContractors = await Owner.findAll({
+      where: { id: selectedContractorIds },
+    });
+
+    if (foundContractors.length !== selectedContractorIds.length) {
+      return {
+        statusCode: 404,
+        body: { success: false, message: "One or more selected contractors not found" },
       };
     }
   }
@@ -376,7 +439,24 @@ const updateOrderAdminStatusService = async (id, payload) => {
       })), { transaction });
     }
 
-    if (adminStatus === "approved") {
+    if (adminStatus === "approved" && hasManualContractorSelection) {
+      await OrderMapping.destroy({
+        where: { orderId: id, userType: "contractor" },
+        transaction,
+      });
+
+      await OrderMapping.bulkCreate(selectedContractorIds.map((contractorId) => ({
+          orderId: id,
+          ownerId: contractorId,
+          labourId: null,
+          userType: "contractor",
+          skill: order.skill,
+          status: "assigned",
+          adminStatus: "approved",
+      })), { transaction });
+    }
+
+    if (adminStatus === "approved" && !isContractorOrder) {
       const assignmentResult = await workAssignmentService.createAssignmentFromOrderService(id, {
         middlemanId: middlemanId || staffId || null,
         fromDate,

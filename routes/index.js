@@ -86,6 +86,10 @@ router.get("/api/orders/labour/:labourId", verifyToken, (req, res) => {
   req.query.labourId = req.params.labourId;
   return orderController.getOrders(req, res);
 });
+router.get("/api/orders/contractor/:contractorId", verifyToken, (req, res) => {
+  req.query.contractorId = req.params.contractorId;
+  return orderController.getOrders(req, res);
+});
 router.get("/api/labour/:labourId/orders", verifyToken, (req, res) => {
   req.query.labourId = req.params.labourId;
   return orderController.getOrders(req, res);

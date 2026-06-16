@@ -28,6 +28,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false,
     },
+    needType: {
+      type: DataTypes.ENUM("labour", "contractor"),
+      allowNull: false,
+      defaultValue: "labour",
+    },
     stateId: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -104,6 +109,7 @@ module.exports = (sequelize, DataTypes) => {
       { fields: ["postOfficeId"] },
       { fields: ["status"] },
       { fields: ["adminStatus"] },
+      { fields: ["needType"] },
     ],
   });
 
