@@ -240,6 +240,7 @@ const createOrderService = async (payload) => {
 };
 
 const getOrdersService = async ({
+  userId,
   ownerId,
   labourId,
   contractorId,
@@ -258,6 +259,7 @@ const getOrdersService = async ({
   const where = {};
   const include = [...orderInclude];
   const resolvedNeedType = needType ?? orderType ?? bookingFor ?? requestedProviderRole;
+  const { Op } = db.Sequelize;
 
   if (status) {
     where.status = status;
@@ -271,16 +273,31 @@ const getOrdersService = async ({
     where.needType = resolvedNeedType === "contractor" ? "contractor" : "labour";
   }
 
-  if (ownerId || labourId || contractorId) {
+  // userId or ownerId → same user, check both userId and ownerId columns
+  const ownerFilterId = userId || ownerId;
+
+  if (ownerFilterId || labourId || contractorId) {
     const mappingsIncludeIndex = include.findIndex((item) => item.as === "mappings");
+    let mappingWhere = {};
+
+    if (ownerFilterId) {
+      mappingWhere = {
+        userType: "owner",
+        [Op.or]: [
+          { userId: Number(ownerFilterId) },
+          { ownerId: Number(ownerFilterId) },
+        ],
+      };
+    } else if (labourId) {
+      mappingWhere = { labourId, userType: "labour" };
+    } else if (contractorId) {
+      mappingWhere = { ownerId: contractorId, userType: "contractor" };
+    }
+
     include[mappingsIncludeIndex] = {
       ...include[mappingsIncludeIndex],
       required: true,
-      where: {
-        ...(ownerId ? { ownerId, userType: "owner" } : {}),
-        ...(labourId ? { labourId, userType: "labour" } : {}),
-        ...(contractorId ? { ownerId: contractorId, userType: "contractor" } : {}),
-      },
+      where: mappingWhere,
     };
   }
 
@@ -431,6 +448,7 @@ const updateOrderAdminStatusService = async (id, payload) => {
 
       await OrderMapping.bulkCreate(selectedLabours.map((labour) => ({
           orderId: id,
+          userId: ownerMapping?.userId || null,
           ownerId: ownerMapping?.ownerId || null,
           labourId: labour.labourId,
           userType: "labour",

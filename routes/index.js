@@ -82,6 +82,10 @@ router.get("/api/orders/owner/:ownerId", verifyToken, (req, res) => {
   req.query.ownerId = req.params.ownerId;
   return orderController.getOrders(req, res);
 });
+router.get("/api/orders/user/:userId", verifyToken, (req, res) => {
+  req.query.userId = req.params.userId;
+  return orderController.getOrders(req, res);
+});
 router.get("/api/orders/labour/:labourId", verifyToken, (req, res) => {
   req.query.labourId = req.params.labourId;
   return orderController.getOrders(req, res);
