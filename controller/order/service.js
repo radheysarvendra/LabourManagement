@@ -82,6 +82,16 @@ const mapOrder = (order) => {
   const skillDetail = json.skillDetail || null;
   const needType = json.needType || "labour";
 
+  // For new-flow orders: ownerId=null so Sequelize join returns owner=null.
+  // Fall back to the denormalized ownerName/ownerPhone stored on the order itself.
+  const ownerMappingRaw = mappings.find((item) => item.userType === "owner") || null;
+  const syntheticOwner = json.ownerName
+    ? { id: null, name: json.ownerName, phone: json.ownerPhone }
+    : null;
+  const ownerMapping = ownerMappingRaw
+    ? { ...ownerMappingRaw, owner: ownerMappingRaw.owner || syntheticOwner }
+    : null;
+
   return {
     ...json,
     ownerName: json.ownerName || null,
@@ -108,7 +118,7 @@ const mapOrder = (order) => {
     bookingFor: needType,
     requestedProviderRole: needType,
     workAssignmentId: json.workAssignment?.id || null,
-    ownerMapping: mappings.find((item) => item.userType === "owner") || null,
+    ownerMapping,
     contractorMapping: contractorMappings[0] || null,
     contractorId: contractorMappings[0]?.ownerId || null,
     labourMappings,

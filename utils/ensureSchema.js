@@ -172,6 +172,44 @@ const ensureSchema = async (db) => {
     await ensureColumn(queryInterface, "orderMappings", columnName, definition);
   }
 
+  // Backfill ownerName/ownerPhone for orders created before denormalization was added.
+  // Tries labours table first (new-flow labour users), then owners table by userId,
+  // then owners table by ownerId (old-flow orders already have ownerName set so COALESCE skips them).
+  try {
+    await db.sequelize.query(`
+      UPDATE "orders" o
+      SET
+        "ownerName" = COALESCE(
+          o."ownerName",
+          (SELECT l.name FROM "labours" l
+           INNER JOIN "orderMappings" m ON m."orderId" = o.id AND m."userType" = 'owner'
+           WHERE m."userId" = l.id LIMIT 1),
+          (SELECT ow.name FROM "owners" ow
+           INNER JOIN "orderMappings" m ON m."orderId" = o.id AND m."userType" = 'owner'
+           WHERE m."userId" = ow.id LIMIT 1),
+          (SELECT ow.name FROM "owners" ow
+           INNER JOIN "orderMappings" m ON m."orderId" = o.id AND m."userType" = 'owner'
+           WHERE m."ownerId" = ow.id LIMIT 1)
+        ),
+        "ownerPhone" = COALESCE(
+          o."ownerPhone",
+          (SELECT l.phone FROM "labours" l
+           INNER JOIN "orderMappings" m ON m."orderId" = o.id AND m."userType" = 'owner'
+           WHERE m."userId" = l.id LIMIT 1),
+          (SELECT ow.phone FROM "owners" ow
+           INNER JOIN "orderMappings" m ON m."orderId" = o.id AND m."userType" = 'owner'
+           WHERE m."userId" = ow.id LIMIT 1),
+          (SELECT ow.phone FROM "owners" ow
+           INNER JOIN "orderMappings" m ON m."orderId" = o.id AND m."userType" = 'owner'
+           WHERE m."ownerId" = ow.id LIMIT 1)
+        )
+      WHERE o."ownerName" IS NULL OR o."ownerPhone" IS NULL
+    `);
+    console.log("Backfilled ownerName/ownerPhone on orders");
+  } catch (e) {
+    console.warn("Order ownerName backfill skipped:", e.message);
+  }
+
   await ensureIndex(queryInterface, "labours", ["stateId"], "idx_labours_state_id");
   await ensureIndex(queryInterface, "labours", ["districtId"], "idx_labours_district_id");
   await ensureIndex(queryInterface, "labours", ["pincodeId"], "idx_labours_pincode_id");
