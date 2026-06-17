@@ -182,10 +182,10 @@ const createWorkAssignmentService = async (payload, options = {}) => {
     labours = [],
   } = payload;
 
-  if (!orderId || !ownerId) {
+  if (!orderId) {
     return {
       statusCode: 400,
-      body: { success: false, message: "orderId aur ownerId required hai" },
+      body: { success: false, message: "orderId required hai" },
     };
   }
 
@@ -312,7 +312,7 @@ const createAssignmentFromOrderService = async (orderId, options = {}) => {
 
   return createWorkAssignmentService({
     orderId: order.id,
-    ownerId: order.ownerId || ownerMapping?.ownerId,
+    ownerId: ownerMapping?.ownerId || null,
     middlemanId: options.middlemanId || null,
     fromDate: options.fromDate || order.requiredDate,
     toDate: options.toDate || order.requiredDate,

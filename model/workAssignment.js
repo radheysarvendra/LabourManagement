@@ -18,7 +18,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     ownerId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
     },
     middlemanId: {
       type: DataTypes.INTEGER,

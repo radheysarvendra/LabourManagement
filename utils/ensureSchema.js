@@ -122,6 +122,8 @@ const ensureSchema = async (db) => {
   };
 
   await dropConstraintIfExists(db.sequelize, "orderMappings", "orderMappings_ownerId_fkey");
+  await dropConstraintIfExists(db.sequelize, "workAssignments", "workAssignments_ownerId_fkey");
+  await db.sequelize.query(`ALTER TABLE "workAssignments" ALTER COLUMN "ownerId" DROP NOT NULL`);
 
   await ensureEnumValues(db.sequelize, "enum_authOtps_userType", userTypeEnumValues);
   await ensureEnumValues(db.sequelize, "enum_mobile_token_maps_userType", userTypeEnumValues);
