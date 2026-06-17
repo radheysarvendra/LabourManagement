@@ -31,6 +31,12 @@ const ensureEnumValues = async (sequelize, enumName, values) => {
   }
 };
 
+const dropConstraintIfExists = async (sequelize, table, constraint) => {
+  await sequelize.query(`
+    ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}";
+  `);
+};
+
 const ensureSchema = async (db) => {
   const queryInterface = db.sequelize.getQueryInterface();
   const userTypeEnumValues = [
@@ -114,6 +120,8 @@ const ensureSchema = async (db) => {
   const orderMappingColumns = {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
   };
+
+  await dropConstraintIfExists(db.sequelize, "orderMappings", "orderMappings_ownerId_fkey");
 
   await ensureEnumValues(db.sequelize, "enum_authOtps_userType", userTypeEnumValues);
   await ensureEnumValues(db.sequelize, "enum_mobile_token_maps_userType", userTypeEnumValues);

@@ -211,7 +211,7 @@ const createOrderService = async (payload) => {
     await OrderMapping.create({
       orderId: createdOrder.id,
       userId,
-      ownerId: ownerId || null,
+      ownerId: null,
       labourId: null,
       userType: needType === "contractor" ? "contractor" : "owner",
       skill: skillName,
