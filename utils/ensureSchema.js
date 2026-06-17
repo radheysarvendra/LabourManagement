@@ -172,38 +172,22 @@ const ensureSchema = async (db) => {
     await ensureColumn(queryInterface, "orderMappings", columnName, definition);
   }
 
-  // Backfill ownerName/ownerPhone for orders created before denormalization was added.
-  // Tries labours table first (new-flow labour users), then owners table by userId,
-  // then owners table by ownerId (old-flow orders already have ownerName set so COALESCE skips them).
+  // Backfill ownerName/ownerPhone on orders that predate denormalization.
+  // Uses PostgreSQL UPDATE FROM syntax to JOIN labours/owners tables via the orderMapping.
+  // Labour by userId is checked first (new-flow), then owner by userId, then owner by ownerId (old-flow).
   try {
     await db.sequelize.query(`
-      UPDATE "orders" o
+      UPDATE "orders" AS o
       SET
-        "ownerName" = COALESCE(
-          o."ownerName",
-          (SELECT l.name FROM "labours" l
-           INNER JOIN "orderMappings" m ON m."orderId" = o.id AND m."userType" = 'owner'
-           WHERE m."userId" = l.id LIMIT 1),
-          (SELECT ow.name FROM "owners" ow
-           INNER JOIN "orderMappings" m ON m."orderId" = o.id AND m."userType" = 'owner'
-           WHERE m."userId" = ow.id LIMIT 1),
-          (SELECT ow.name FROM "owners" ow
-           INNER JOIN "orderMappings" m ON m."orderId" = o.id AND m."userType" = 'owner'
-           WHERE m."ownerId" = ow.id LIMIT 1)
-        ),
-        "ownerPhone" = COALESCE(
-          o."ownerPhone",
-          (SELECT l.phone FROM "labours" l
-           INNER JOIN "orderMappings" m ON m."orderId" = o.id AND m."userType" = 'owner'
-           WHERE m."userId" = l.id LIMIT 1),
-          (SELECT ow.phone FROM "owners" ow
-           INNER JOIN "orderMappings" m ON m."orderId" = o.id AND m."userType" = 'owner'
-           WHERE m."userId" = ow.id LIMIT 1),
-          (SELECT ow.phone FROM "owners" ow
-           INNER JOIN "orderMappings" m ON m."orderId" = o.id AND m."userType" = 'owner'
-           WHERE m."ownerId" = ow.id LIMIT 1)
-        )
-      WHERE o."ownerName" IS NULL OR o."ownerPhone" IS NULL
+        "ownerName" = COALESCE(o."ownerName", la.name, ow_u.name, ow_o.name),
+        "ownerPhone" = COALESCE(o."ownerPhone", la.phone, ow_u.phone, ow_o.phone)
+      FROM "orderMappings" AS m
+      LEFT JOIN "labours"  AS la   ON la.id   = m."userId"
+      LEFT JOIN "owners"   AS ow_u ON ow_u.id = m."userId"
+      LEFT JOIN "owners"   AS ow_o ON ow_o.id = m."ownerId"
+      WHERE m."orderId"   = o.id
+        AND m."userType"  = 'owner'
+        AND (o."ownerName" IS NULL OR o."ownerPhone" IS NULL)
     `);
     console.log("Backfilled ownerName/ownerPhone on orders");
   } catch (e) {
