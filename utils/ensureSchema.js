@@ -172,6 +172,15 @@ const ensureSchema = async (db) => {
     await ensureColumn(queryInterface, "orderMappings", columnName, definition);
   }
 
+  // Rename legacy "want_labour" registeredFrom value to "owner" in both tables
+  try {
+    await db.sequelize.query(`UPDATE "owners" SET "registeredFrom" = 'owner' WHERE "registeredFrom" = 'want_labour'`);
+    await db.sequelize.query(`UPDATE "labours" SET "registeredFrom" = 'owner' WHERE "registeredFrom" = 'want_labour'`);
+    console.log("Migrated registeredFrom: want_labour → owner");
+  } catch (e) {
+    console.warn("registeredFrom migration skipped:", e.message);
+  }
+
   // Backfill ownerName/ownerPhone on orders that predate denormalization.
   // Uses PostgreSQL UPDATE FROM syntax to JOIN labours/owners tables via the orderMapping.
   // Labour by userId is checked first (new-flow), then owner by userId, then owner by ownerId (old-flow).
