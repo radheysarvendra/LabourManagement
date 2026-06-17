@@ -111,6 +111,9 @@ const ensureSchema = async (db) => {
   const bookingColumns = {
     requiredDate: { type: db.Sequelize.DATEONLY, allowNull: true },
   };
+  const orderMappingColumns = {
+    userId: { type: db.Sequelize.INTEGER, allowNull: true },
+  };
 
   await ensureEnumValues(db.sequelize, "enum_authOtps_userType", userTypeEnumValues);
   await ensureEnumValues(db.sequelize, "enum_mobile_token_maps_userType", userTypeEnumValues);
@@ -145,6 +148,10 @@ const ensureSchema = async (db) => {
     await ensureColumn(queryInterface, "bookings", columnName, definition);
   }
 
+  for (const [columnName, definition] of Object.entries(orderMappingColumns)) {
+    await ensureColumn(queryInterface, "orderMappings", columnName, definition);
+  }
+
   await ensureIndex(queryInterface, "labours", ["stateId"], "idx_labours_state_id");
   await ensureIndex(queryInterface, "labours", ["districtId"], "idx_labours_district_id");
   await ensureIndex(queryInterface, "labours", ["pincodeId"], "idx_labours_pincode_id");
@@ -157,7 +164,9 @@ const ensureSchema = async (db) => {
   await ensureIndex(queryInterface, "orders", ["requiredDate"], "idx_orders_required_date");
   await ensureIndex(queryInterface, "orders", ["categoryId"], "idx_orders_category_id");
   await ensureIndex(queryInterface, "orders", ["skillId"], "idx_orders_skill_id");
+  await ensureIndex(queryInterface, "orders", ["needType"], "idx_orders_need_type");
   await ensureIndex(queryInterface, "bookings", ["requiredDate"], "idx_bookings_required_date");
+  await ensureIndex(queryInterface, "orderMappings", ["userId"], "idx_order_mappings_user_id");
   try {
     await ensureIndex(
       queryInterface,
