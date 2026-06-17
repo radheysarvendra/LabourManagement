@@ -181,22 +181,23 @@ const ensureSchema = async (db) => {
     console.warn("registeredFrom migration skipped:", e.message);
   }
 
-  // Backfill ownerName/ownerPhone on orders that predate denormalization.
-  // Uses PostgreSQL UPDATE FROM syntax to JOIN labours/owners tables via the orderMapping.
-  // Labour by userId is checked first (new-flow), then owner by userId, then owner by ownerId (old-flow).
+  // Backfill ownerName/ownerPhone on orders created before denormalization was added.
+  // For new-flow orders (ownerId=null, userId set): checks labours first, then owners.
+  // For old-flow orders (ownerId set): joins owners directly.
+  // NULLIF treats empty strings as NULL so they get overwritten too.
   try {
     await db.sequelize.query(`
       UPDATE "orders" AS o
       SET
-        "ownerName" = COALESCE(o."ownerName", la.name, ow_u.name, ow_o.name),
-        "ownerPhone" = COALESCE(o."ownerPhone", la.phone, ow_u.phone, ow_o.phone)
+        "ownerName" = COALESCE(NULLIF(o."ownerName", ''), la.name, ow_u.name, ow_o.name),
+        "ownerPhone" = COALESCE(NULLIF(o."ownerPhone", ''), la.phone, ow_u.phone, ow_o.phone)
       FROM "orderMappings" AS m
-      LEFT JOIN "labours"  AS la   ON la.id   = m."userId"
-      LEFT JOIN "owners"   AS ow_u ON ow_u.id = m."userId"
-      LEFT JOIN "owners"   AS ow_o ON ow_o.id = m."ownerId"
-      WHERE m."orderId"   = o.id
-        AND m."userType"  = 'owner'
-        AND (o."ownerName" IS NULL OR o."ownerPhone" IS NULL)
+      LEFT JOIN "labours" AS la   ON la.id   = m."userId"
+      LEFT JOIN "owners"  AS ow_u ON ow_u.id = m."userId"
+      LEFT JOIN "owners"  AS ow_o ON ow_o.id = m."ownerId"
+      WHERE m."orderId" = o.id
+        AND m."userType" = 'owner'
+        AND (NULLIF(o."ownerName", '') IS NULL OR NULLIF(o."ownerPhone", '') IS NULL)
     `);
     console.log("Backfilled ownerName/ownerPhone on orders");
   } catch (e) {
