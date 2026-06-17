@@ -11,6 +11,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     ownerId: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -50,6 +54,7 @@ module.exports = (sequelize, DataTypes) => {
     timestamps: true,
     indexes: [
       { fields: ["orderId"] },
+      { fields: ["userId"] },
       { fields: ["ownerId"] },
       { fields: ["labourId"] },
       { fields: ["userType"] },

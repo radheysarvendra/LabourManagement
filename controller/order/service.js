@@ -116,6 +116,7 @@ const mapOrder = (order) => {
 
 const createOrderService = async (payload) => {
   const {
+    userId,
     ownerId,
     categoryId,
     categoryName,
@@ -136,10 +137,10 @@ const createOrderService = async (payload) => {
   const requiredCount = getRequiredLabourCount(payload);
   const needType = normalizeNeedType(payload);
 
-  if (!ownerId) {
+  if (!userId) {
     return {
       statusCode: 400,
-      body: { success: false, message: "ownerId required hai" },
+      body: { success: false, message: "userId required hai" },
     };
   }
 
@@ -209,7 +210,8 @@ const createOrderService = async (payload) => {
 
     await OrderMapping.create({
       orderId: createdOrder.id,
-      ownerId,
+      userId,
+      ownerId: ownerId || null,
       labourId: null,
       userType: needType === "contractor" ? "contractor" : "owner",
       skill: skillName,
@@ -229,7 +231,7 @@ const createOrderService = async (payload) => {
     statusCode: 201,
     body: {
       success: true,
-      message: "Request submitted. Admin approval pending.",
+      message: "आपकी रिक्वेस्ट भेज दी गई है। Admin approval ke baad booking confirm hogi.",
       requiredCount,
       allocatedCount: 0,
       data: mapOrder(createdData),
