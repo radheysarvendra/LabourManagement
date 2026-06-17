@@ -159,10 +159,12 @@ const buildAuthResponse = ({ token, user, userType, roles, message = "Login succ
   userType,
   roleId: `${userType}:${user?.id || user?.phone}`,
   profileId: user?.id || null,
+  userId: user?.id || null,
   labourId: userType === ROLE_TYPES.LABOUR ? user?.id || null : null,
   ownerId: OWNER_LIKE_ROLES.includes(userType) ? user?.id || null : null,
   contractorId: CONTRACTOR_LIKE_ROLES.includes(userType) ? user?.id || null : null,
   roles,
+  registeredFrom: user?.registeredFrom || userType,
   isRegistered: isProfileRegistered(user),
 });
 
@@ -186,9 +188,11 @@ const requestOtp = async (req, res) => {
       users[0];
 
     if (!selectedUser) {
-      return res.status(404).send({
-        success: false,
-        message: "User not found. Please register first.",
+      return res.status(200).send({
+        success: true,
+        isRegistered: false,
+        phone,
+        message: "User registered nahi hai. Pehle register karein.",
       });
     }
 
@@ -431,12 +435,51 @@ const logout = async (req, res) => {
   }
 };
 
+const checkPhone = async (req, res) => {
+  try {
+    const phone = normalizePhone(req.body.phone);
+
+    if (phone.length !== 10) {
+      return res.status(400).send({
+        success: false,
+        message: "10 digit mobile number required",
+      });
+    }
+
+    const users = sortUsersByRolePriority(await findUsersByPhone(phone));
+
+    if (users.length === 0) {
+      return res.status(200).send({
+        success: true,
+        isRegistered: false,
+        phone,
+        message: "User registered nahi hai. Registration required.",
+      });
+    }
+
+    const primary = users[0];
+
+    return res.status(200).send({
+      success: true,
+      isRegistered: true,
+      phone,
+      userId: primary.user.id,
+      registeredFrom: primary.user.registeredFrom || primary.userType,
+      roles: users.map((item) => item.userType),
+      message: "User registered hai.",
+    });
+  } catch (err) {
+    return res.status(500).send({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   login,
   requestOtp,
   verifyOtp,
   verifyToken,
   logout,
+  checkPhone,
   generateToken,
   saveToken,
 };

@@ -120,8 +120,10 @@ const createOwnerService = async (payload) => {
     profileImage,
     role,
     userType,
+    registeredFrom,
   } = payload;
   const sessionUserType = normalizeOwnerRole(userType || role);
+  const resolvedRegisteredFrom = registeredFrom || sessionUserType || "want_labour";
 
   if (!name || !phone || !workType) {
     return {
@@ -168,6 +170,7 @@ const createOwnerService = async (payload) => {
     age,
     gender,
     profileImage,
+    registeredFrom: resolvedRegisteredFrom,
   });
 
   return buildOwnerSession(

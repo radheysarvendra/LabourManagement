@@ -52,6 +52,7 @@ router.get("/api/status", async (req, res) => {
 
 // Labour routes  (createLabour → /labour POST)
 router.post("/auth/login", authController.login);
+router.post("/auth/check-phone", authController.checkPhone);
 router.post("/auth/request-otp", authController.requestOtp);
 router.post("/auth/verify-otp", authController.verifyOtp);
 router.get("/pincode/:pincode", locationController.getPincodeDetails);

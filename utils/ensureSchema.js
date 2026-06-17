@@ -53,8 +53,10 @@ const ensureSchema = async (db) => {
     type: db.Sequelize.TEXT,
     allowNull: true,
   };
+  const registeredFromEnum = { type: db.Sequelize.STRING, allowNull: true };
   const labourColumns = {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
+    registeredFrom: registeredFromEnum,
     labourCode: { type: db.Sequelize.STRING, allowNull: true, unique: true },
     status: { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
     city: stringColumn,
@@ -78,6 +80,7 @@ const ensureSchema = async (db) => {
   };
   const ownerColumns = {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
+    registeredFrom: registeredFromEnum,
     status: { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
     city: stringColumn,
     village: stringColumn,
