@@ -84,6 +84,8 @@ const mapOrder = (order) => {
 
   return {
     ...json,
+    ownerName: json.ownerName || null,
+    ownerPhone: json.ownerPhone || null,
     requiredLabourCount: json.labourRequired,
     assignedLabourCount: json.labourAllocated,
     category: json.categoryDetail
@@ -162,6 +164,13 @@ const createOrderService = async (payload) => {
   const categoryData = categoryId ? await Category.findOne({ where: { id: categoryId } }) : null;
   const skillName = skill || skillData?.skillName;
 
+  // userId se user dhundo — Labour ya Owner dono check karo
+  const userRecord =
+    await Owner.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] }) ||
+    await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] });
+  const ownerName = userRecord?.name || null;
+  const ownerPhone = userRecord?.phone || null;
+
   if (skillId && !skillData) {
     return {
       statusCode: 404,
@@ -186,6 +195,8 @@ const createOrderService = async (payload) => {
   const order = await db.sequelize.transaction(async (transaction) => {
     const createdOrder = await Order.create({
       orderCode: await generateOrderCode(),
+      ownerName,
+      ownerPhone,
       categoryId: categoryId || null,
       categoryName: categoryName || categoryData?.name || skillData?.category || null,
       skillId: skillId || null,
