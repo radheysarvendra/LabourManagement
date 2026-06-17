@@ -305,6 +305,7 @@ const createLabourService = async (payload) => {
     skill,
     skills,
     skillWages,
+    registeredFrom = "labour",
   } = payload;
 
   if (!name || !phone || !gender || !age) {
@@ -364,6 +365,7 @@ const createLabourService = async (payload) => {
     age,
     experienceYears,
     isAvailable,
+    registeredFrom,
   });
 
   if (skillList.length > 0) {

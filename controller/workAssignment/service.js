@@ -182,16 +182,9 @@ const createWorkAssignmentService = async (payload, options = {}) => {
     labours = [],
   } = payload;
 
-  if (!orderId || !ownerId) {
-    return {
-      statusCode: 400,
-      body: { success: false, message: "orderId aur ownerId required hai" },
-    };
-  }
+  const order = orderId ? await Order.findOne({ where: { id: orderId } }) : null;
 
-  const order = await Order.findOne({ where: { id: orderId } });
-
-  if (!order) {
+  if (orderId && !order) {
     return {
       statusCode: 404,
       body: { success: false, message: "Order not found" },
@@ -201,20 +194,20 @@ const createWorkAssignmentService = async (payload, options = {}) => {
   const createAssignment = async (transaction) => {
     const created = await WorkAssignment.create({
       assignmentCode: await generateAssignmentCode(),
-      orderId,
-      ownerId,
+      orderId: orderId || null,
+      ownerId: ownerId || null,
       middlemanId: middlemanId || null,
-      fromDate: fromDate || order.requiredDate || null,
-      toDate: toDate || fromDate || order.requiredDate || null,
+      fromDate: fromDate || order?.requiredDate || null,
+      toDate: toDate || fromDate || order?.requiredDate || null,
       workLocation:
         workLocation ||
-        [order.postOffice, order.pincode, order.district, order.state].filter(Boolean).join(", "),
+        (order ? [order.postOffice, order.pincode, order.district, order.state].filter(Boolean).join(", ") : null),
       status: status || "upcoming",
       notes,
     }, { transaction });
 
     await syncAssignmentLabours(created.id, labours, transaction, {
-      defaultSkill: order.skill,
+      defaultSkill: order?.skill || null,
     });
 
     return created;
@@ -312,7 +305,7 @@ const createAssignmentFromOrderService = async (orderId, options = {}) => {
 
   return createWorkAssignmentService({
     orderId: order.id,
-    ownerId: order.ownerId || ownerMapping?.ownerId,
+    ownerId: ownerMapping?.ownerId || null,
     middlemanId: options.middlemanId || null,
     fromDate: options.fromDate || order.requiredDate,
     toDate: options.toDate || order.requiredDate,

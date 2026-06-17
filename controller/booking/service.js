@@ -25,7 +25,7 @@ const bookingInclude = [
 
 const generateBookingCode = async () => {
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const code = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
+    const code = `BKG-${Math.floor(100000 + Math.random() * 900000)}`;
     const existing = await Booking.findOne({ where: { bookingCode: code } });
 
     if (!existing) {
@@ -33,7 +33,7 @@ const generateBookingCode = async () => {
     }
   }
 
-  return `ORD-${Date.now().toString().slice(-6)}`;
+  return `BKG-${Date.now().toString().slice(-6)}`;
 };
 
 const getLabourWageForSkill = (labour, skillName) => {

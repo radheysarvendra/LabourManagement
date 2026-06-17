@@ -84,6 +84,8 @@ const mapOrder = (order) => {
 
   return {
     ...json,
+    ownerName: json.ownerName || null,
+    ownerPhone: json.ownerPhone || null,
     requiredLabourCount: json.labourRequired,
     assignedLabourCount: json.labourAllocated,
     category: json.categoryDetail
@@ -162,6 +164,13 @@ const createOrderService = async (payload) => {
   const categoryData = categoryId ? await Category.findOne({ where: { id: categoryId } }) : null;
   const skillName = skill || skillData?.skillName;
 
+  // userId se user dhundo — Labour ya Owner dono check karo
+  const userRecord =
+    await Owner.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] }) ||
+    await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] });
+  const ownerName = userRecord?.name || null;
+  const ownerPhone = userRecord?.phone || null;
+
   if (skillId && !skillData) {
     return {
       statusCode: 404,
@@ -186,6 +195,8 @@ const createOrderService = async (payload) => {
   const order = await db.sequelize.transaction(async (transaction) => {
     const createdOrder = await Order.create({
       orderCode: await generateOrderCode(),
+      ownerName,
+      ownerPhone,
       categoryId: categoryId || null,
       categoryName: categoryName || categoryData?.name || skillData?.category || null,
       skillId: skillId || null,
@@ -211,7 +222,7 @@ const createOrderService = async (payload) => {
     await OrderMapping.create({
       orderId: createdOrder.id,
       userId,
-      ownerId: ownerId || null,
+      ownerId: null,
       labourId: null,
       userType: needType === "contractor" ? "contractor" : "owner",
       skill: skillName,
@@ -240,6 +251,7 @@ const createOrderService = async (payload) => {
 };
 
 const getOrdersService = async ({
+  userId,
   ownerId,
   labourId,
   contractorId,
@@ -258,6 +270,7 @@ const getOrdersService = async ({
   const where = {};
   const include = [...orderInclude];
   const resolvedNeedType = needType ?? orderType ?? bookingFor ?? requestedProviderRole;
+  const { Op } = db.Sequelize;
 
   if (status) {
     where.status = status;
@@ -271,16 +284,31 @@ const getOrdersService = async ({
     where.needType = resolvedNeedType === "contractor" ? "contractor" : "labour";
   }
 
-  if (ownerId || labourId || contractorId) {
+  // userId or ownerId → same user, check both userId and ownerId columns
+  const ownerFilterId = userId || ownerId;
+
+  if (ownerFilterId || labourId || contractorId) {
     const mappingsIncludeIndex = include.findIndex((item) => item.as === "mappings");
+    let mappingWhere = {};
+
+    if (ownerFilterId) {
+      mappingWhere = {
+        userType: "owner",
+        [Op.or]: [
+          { userId: Number(ownerFilterId) },
+          { ownerId: Number(ownerFilterId) },
+        ],
+      };
+    } else if (labourId) {
+      mappingWhere = { labourId, userType: "labour" };
+    } else if (contractorId) {
+      mappingWhere = { ownerId: contractorId, userType: "contractor" };
+    }
+
     include[mappingsIncludeIndex] = {
       ...include[mappingsIncludeIndex],
       required: true,
-      where: {
-        ...(ownerId ? { ownerId, userType: "owner" } : {}),
-        ...(labourId ? { labourId, userType: "labour" } : {}),
-        ...(contractorId ? { ownerId: contractorId, userType: "contractor" } : {}),
-      },
+      where: mappingWhere,
     };
   }
 
@@ -431,6 +459,7 @@ const updateOrderAdminStatusService = async (id, payload) => {
 
       await OrderMapping.bulkCreate(selectedLabours.map((labour) => ({
           orderId: id,
+          userId: ownerMapping?.userId || null,
           ownerId: ownerMapping?.ownerId || null,
           labourId: labour.labourId,
           userType: "labour",

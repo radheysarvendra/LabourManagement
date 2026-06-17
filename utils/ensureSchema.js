@@ -31,6 +31,12 @@ const ensureEnumValues = async (sequelize, enumName, values) => {
   }
 };
 
+const dropConstraintIfExists = async (sequelize, table, constraint) => {
+  await sequelize.query(`
+    ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}";
+  `);
+};
+
 const ensureSchema = async (db) => {
   const queryInterface = db.sequelize.getQueryInterface();
   const userTypeEnumValues = [
@@ -47,8 +53,10 @@ const ensureSchema = async (db) => {
     type: db.Sequelize.TEXT,
     allowNull: true,
   };
+  const registeredFromEnum = { type: db.Sequelize.STRING, allowNull: true };
   const labourColumns = {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
+    registeredFrom: registeredFromEnum,
     labourCode: { type: db.Sequelize.STRING, allowNull: true, unique: true },
     status: { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
     city: stringColumn,
@@ -72,6 +80,7 @@ const ensureSchema = async (db) => {
   };
   const ownerColumns = {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
+    registeredFrom: registeredFromEnum,
     status: { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
     city: stringColumn,
     village: stringColumn,
@@ -107,6 +116,8 @@ const ensureSchema = async (db) => {
     address: textColumn,
     requiredDate: { type: db.Sequelize.DATEONLY, allowNull: true },
     needType: { type: db.Sequelize.ENUM("labour", "contractor"), allowNull: false, defaultValue: "labour" },
+    ownerName: stringColumn,
+    ownerPhone: stringColumn,
   };
   const bookingColumns = {
     requiredDate: { type: db.Sequelize.DATEONLY, allowNull: true },
@@ -114,6 +125,11 @@ const ensureSchema = async (db) => {
   const orderMappingColumns = {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
   };
+
+  await dropConstraintIfExists(db.sequelize, "orderMappings", "orderMappings_ownerId_fkey");
+  await dropConstraintIfExists(db.sequelize, "workAssignments", "workAssignments_ownerId_fkey");
+  await db.sequelize.query(`ALTER TABLE "workAssignments" ALTER COLUMN "ownerId" DROP NOT NULL`);
+  await db.sequelize.query(`ALTER TABLE "workAssignments" ALTER COLUMN "orderId" DROP NOT NULL`);
 
   await ensureEnumValues(db.sequelize, "enum_authOtps_userType", userTypeEnumValues);
   await ensureEnumValues(db.sequelize, "enum_mobile_token_maps_userType", userTypeEnumValues);

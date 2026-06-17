@@ -77,6 +77,11 @@ module.exports = (sequelize, DataTypes) => {  // FIX: DataTypes bhi receive karo
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    registeredFrom: {
+      type: DataTypes.ENUM("labour", "want_labour", "contractor", "contractor_customer"),
+      allowNull: true,
+      defaultValue: "want_labour",
+    },
     createdById: {
       type: DataTypes.INTEGER,
       allowNull: true,

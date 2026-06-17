@@ -52,6 +52,7 @@ router.get("/api/status", async (req, res) => {
 
 // Labour routes  (createLabour → /labour POST)
 router.post("/auth/login", authController.login);
+router.post("/auth/check-phone", authController.checkPhone);
 router.post("/auth/request-otp", authController.requestOtp);
 router.post("/auth/verify-otp", authController.verifyOtp);
 router.get("/pincode/:pincode", locationController.getPincodeDetails);
@@ -80,6 +81,10 @@ router.post("/api/orders", verifyToken, orderController.createOrder);
 router.get("/api/orders", verifyToken, orderController.getOrders);
 router.get("/api/orders/owner/:ownerId", verifyToken, (req, res) => {
   req.query.ownerId = req.params.ownerId;
+  return orderController.getOrders(req, res);
+});
+router.get("/api/orders/user/:userId", verifyToken, (req, res) => {
+  req.query.userId = req.params.userId;
   return orderController.getOrders(req, res);
 });
 router.get("/api/orders/labour/:labourId", verifyToken, (req, res) => {
