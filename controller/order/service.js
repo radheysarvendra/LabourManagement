@@ -120,6 +120,7 @@ const createOrderService = async (payload) => {
   const {
     userId,
     ownerId,
+    _userType,
     categoryId,
     categoryName,
     skillId,
@@ -164,10 +165,12 @@ const createOrderService = async (payload) => {
   const categoryData = categoryId ? await Category.findOne({ where: { id: categoryId } }) : null;
   const skillName = skill || skillData?.skillName;
 
-  // userId se user dhundo — Labour ya Owner dono check karo
-  const userRecord =
-    await Owner.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] }) ||
-    await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] });
+  // Token ke userType se correct table mein dhundo (Labour ya Owner ID collision avoid karo)
+  const isLabourUser = _userType === "labour";
+  const userRecord = isLabourUser
+    ? await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] })
+    : (await Owner.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] }) ||
+       await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] }));
   const ownerName = userRecord?.name || null;
   const ownerPhone = userRecord?.phone || null;
 
@@ -302,7 +305,7 @@ const getOrdersService = async ({
     } else if (labourId) {
       mappingWhere = { labourId, userType: "labour" };
     } else if (contractorId) {
-      mappingWhere = { ownerId: contractorId, userType: "contractor" };
+      mappingWhere = { ownerId: Number(contractorId), userType: "contractor" };
     }
 
     include[mappingsIncludeIndex] = {

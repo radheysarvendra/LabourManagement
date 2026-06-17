@@ -2,7 +2,10 @@ const orderService = require("./service");
 
 const createOrder = async (req,res) => {
   try {
-    const result = await orderService.createOrderService(req.body);
+    const result = await orderService.createOrderService({
+      ...req.body,
+      _userType: req.user?.type || req.user?.userType,
+    });
     return res.status(result.statusCode).send(result.body);
   } catch (err) {
     return res.status(err.statusCode || 500).send({

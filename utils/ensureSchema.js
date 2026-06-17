@@ -128,8 +128,12 @@ const ensureSchema = async (db) => {
 
   await dropConstraintIfExists(db.sequelize, "orderMappings", "orderMappings_ownerId_fkey");
   await dropConstraintIfExists(db.sequelize, "workAssignments", "workAssignments_ownerId_fkey");
-  await db.sequelize.query(`ALTER TABLE "workAssignments" ALTER COLUMN "ownerId" DROP NOT NULL`);
-  await db.sequelize.query(`ALTER TABLE "workAssignments" ALTER COLUMN "orderId" DROP NOT NULL`);
+  try {
+    await db.sequelize.query(`ALTER TABLE "workAssignments" ALTER COLUMN "ownerId" DROP NOT NULL`);
+    await db.sequelize.query(`ALTER TABLE "workAssignments" ALTER COLUMN "orderId" DROP NOT NULL`);
+  } catch (e) {
+    console.warn("workAssignments NOT NULL drop skipped:", e.message);
+  }
 
   await ensureEnumValues(db.sequelize, "enum_authOtps_userType", userTypeEnumValues);
   await ensureEnumValues(db.sequelize, "enum_mobile_token_maps_userType", userTypeEnumValues);
