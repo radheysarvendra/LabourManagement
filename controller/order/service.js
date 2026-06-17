@@ -17,8 +17,10 @@ const orderInclude = [
     model: OrderMapping,
     as: "mappings",
     include: [
-      { model: Owner, as: "owner" },
-      { model: Labour, as: "labour" },
+      { model: Owner, as: "owner", required: false },
+      { model: Labour, as: "labour", required: false },
+      { model: Labour, as: "userLabour", required: false },
+      { model: Owner, as: "userOwner", required: false },
     ],
   },
 ];
@@ -82,14 +84,15 @@ const mapOrder = (order) => {
   const skillDetail = json.skillDetail || null;
   const needType = json.needType || "labour";
 
-  // For new-flow orders: ownerId=null so Sequelize join returns owner=null.
-  // Fall back to the denormalized ownerName/ownerPhone stored on the order itself.
+  // For new-flow orders: ownerId=null so owner join returns null.
+  // Fallback chain: owner (ownerId join) → userLabour (userId→labours) → userOwner (userId→owners) → denormalized fields
   const ownerMappingRaw = mappings.find((item) => item.userType === "owner") || null;
-  const syntheticOwner = json.ownerName
-    ? { id: null, name: json.ownerName, phone: json.ownerPhone }
-    : null;
+  const resolvedOwner = ownerMappingRaw?.owner
+    || (ownerMappingRaw?.userLabour ? { id: ownerMappingRaw.userLabour.id, name: ownerMappingRaw.userLabour.name, phone: ownerMappingRaw.userLabour.phone } : null)
+    || (ownerMappingRaw?.userOwner ? { id: ownerMappingRaw.userOwner.id, name: ownerMappingRaw.userOwner.name, phone: ownerMappingRaw.userOwner.phone } : null)
+    || (json.ownerName ? { id: null, name: json.ownerName, phone: json.ownerPhone } : null);
   const ownerMapping = ownerMappingRaw
-    ? { ...ownerMappingRaw, owner: ownerMappingRaw.owner || syntheticOwner }
+    ? { ...ownerMappingRaw, owner: resolvedOwner }
     : null;
 
   return {
