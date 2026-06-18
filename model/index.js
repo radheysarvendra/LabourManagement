@@ -262,21 +262,6 @@ db.orderMapping.belongsTo(db.owner, {
   as: "owner",
 });
 
-// userId-based lookups for new single-registration flow (constraints:false → no FK in DB)
-db.orderMapping.belongsTo(db.labour, {
-  foreignKey: "userId",
-  targetKey: "id",
-  as: "userLabour",
-  constraints: false,
-});
-
-db.orderMapping.belongsTo(db.owner, {
-  foreignKey: "userId",
-  targetKey: "id",
-  as: "userOwner",
-  constraints: false,
-});
-
 db.labour.hasMany(db.orderMapping, {
   foreignKey: "labourId",
   sourceKey: "id",
