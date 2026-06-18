@@ -21,6 +21,7 @@
     "db:sync-local": "node scripts/syncLiveToLocal.js --restore"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "xlsx": "^0.18.5"
   }
 }

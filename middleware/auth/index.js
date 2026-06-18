@@ -5,6 +5,7 @@ const { config } = require("../../config/db.config");
 
 const Labour = db.labour;
 const Owner = db.owner;
+const User = db.user;
 const TokenDetails = db.mobileTokenMap;
 const AuthOtp = db.authOtp;
 
@@ -124,6 +125,40 @@ const findUsersByPhone = async (phone) => {
     users.push({ user: owner, userType: ROLE_TYPES.OWNER });
     users.push({ user: owner, userType: ROLE_TYPES.CONTRACTOR });
     users.push({ user: owner, userType: ROLE_TYPES.CONTRACTOR_CUSTOMER });
+  }
+
+  // Cross-role: user registered via new flow (users table) but only has one role record.
+  // Auto-create the missing owner record so they can use all 4 roles.
+  // (Labour cross-creation is skipped — needs skills/age/gender via /api/profile/complete-labour)
+  if (!owner && labour) {
+    const globalUser = await User.findOne({ where: { phone } });
+    if (globalUser) {
+      try {
+        const newOwner = await Owner.create({
+          userId: globalUser.id,
+          name: labour.name,
+          phone,
+          workType: "both",
+          city: labour.city || null,
+          state: labour.state || null,
+          district: labour.district || null,
+          pincode: labour.pincode || null,
+          area: labour.area || null,
+          postOffice: labour.postOffice || null,
+          address: labour.address || null,
+          age: labour.age || null,
+          gender: labour.gender || null,
+          isActive: true,
+          registeredFrom: "owner",
+          status: 1,
+        });
+        users.push({ user: newOwner, userType: ROLE_TYPES.OWNER });
+        users.push({ user: newOwner, userType: ROLE_TYPES.CONTRACTOR });
+        users.push({ user: newOwner, userType: ROLE_TYPES.CONTRACTOR_CUSTOMER });
+      } catch (e) {
+        console.warn("Cross-role owner auto-create skipped for phone", phone, ":", e.message);
+      }
+    }
   }
 
   return users;

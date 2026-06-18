@@ -10,6 +10,7 @@ const bookingController = require("../controller/booking/index");
 const orderController = require("../controller/order/index");
 const workAssignmentController = require("../controller/workAssignment/index");
 const authController = require("../middleware/auth/index");
+const newAuthController = require("../controller/auth/index");
 const roleController = require("../controller/Permission_roles/index");
 const adminController = require("../controller/admin/index");
 const { verifyAdminToken, allowAdminModule } = require("../middleware/adminAuth");
@@ -19,7 +20,12 @@ router.get("/", (req, res) => {
   res.status(200).send({
     success: true,
     message: "Labour backend is live",
+    _commit: "8d49d6b",
   });
+});
+
+router.get("/api/health", (req, res) => {
+  res.status(200).json({ ok: true, commit: "8d49d6b" });
 });
 
 router.get("/health", (req, res) => {
@@ -51,6 +57,11 @@ router.get("/api/status", async (req, res) => {
 });
 
 // Labour routes  (createLabour → /labour POST)
+// Unified registration (new flow — all 4 roles, single registration)
+router.post("/api/auth/register", newAuthController.register);
+router.post("/api/profile/complete-owner", verifyToken, newAuthController.completeOwnerProfile);
+router.post("/api/profile/complete-labour", verifyToken, newAuthController.completeLabourProfile);
+
 router.post("/auth/login", authController.login);
 router.post("/auth/check-phone", authController.checkPhone);
 router.post("/auth/request-otp", authController.requestOtp);
@@ -148,7 +159,7 @@ router.get("/api/admin/roles", verifyAdminToken, allowAdminModule("roles", "canV
 router.get("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canView"), roleController.getRoleById);
 router.put("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canUpdate"), roleController.updateRoleById);
 router.delete("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canDelete"), roleController.deleteRoleById);
-router.get("/api/admin/labours", verifyAdminToken, allowAdminModule("labours", "canView"), labourController.searchLabours);
+router.get("/api/admin/labours", verifyAdminToken, allowAdminModule("labours", "canView"), labourController.adminSearchLabours);
 router.get("/api/admin/labours/:id", verifyAdminToken, allowAdminModule("labours", "canView"), labourController.getLabourById);
 router.post("/api/admin/labours", verifyAdminToken, allowAdminModule("labours", "canCreate"), labourController.createLabour);
 router.put("/api/admin/labours/:id", verifyAdminToken, allowAdminModule("labours", "canUpdate"), labourController.updateLabourById);
