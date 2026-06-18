@@ -68,21 +68,8 @@ const ensureSchema = async (db) => {
     registeredFrom: registeredFromEnum,
     labourCode: { type: db.Sequelize.STRING, allowNull: true, unique: true },
     status: { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
-    city: stringColumn,
-    village: stringColumn,
-    stateId: { type: db.Sequelize.INTEGER, allowNull: true },
-    districtId: { type: db.Sequelize.INTEGER, allowNull: true },
-    pincodeId: { type: db.Sequelize.INTEGER, allowNull: true },
-    postOfficeId: { type: db.Sequelize.INTEGER, allowNull: true },
-    district: stringColumn,
-    state: stringColumn,
-    pincode: stringColumn,
-    area: stringColumn,
-    postOffice: stringColumn,
-    address: textColumn,
     isAvailable: { type: db.Sequelize.BOOLEAN, allowNull: true, defaultValue: true },
     isVerified: { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: false },
-    profileImage: stringColumn,
     experienceYears: { type: db.Sequelize.INTEGER, allowNull: true, defaultValue: 0 },
     createdById: { type: db.Sequelize.INTEGER, allowNull: true },
     updatedById: { type: db.Sequelize.INTEGER, allowNull: true },
@@ -91,16 +78,6 @@ const ensureSchema = async (db) => {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
     registeredFrom: registeredFromEnum,
     status: { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
-    city: stringColumn,
-    village: stringColumn,
-    district: stringColumn,
-    state: stringColumn,
-    pincode: stringColumn,
-    area: stringColumn,
-    postOffice: stringColumn,
-    address: textColumn,
-    age: { type: db.Sequelize.INTEGER, allowNull: true },
-    profileImage: stringColumn,
     isActive: { type: db.Sequelize.BOOLEAN, allowNull: true, defaultValue: true },
     createdById: { type: db.Sequelize.INTEGER, allowNull: true },
     updatedById: { type: db.Sequelize.INTEGER, allowNull: true },
@@ -148,6 +125,80 @@ const ensureSchema = async (db) => {
       "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `);
+
+  // Add personal/location columns to users (moved from labours/owners)
+  const userPersonalColumns = {
+    age:         { type: db.Sequelize.INTEGER, allowNull: true },
+    gender:      { type: db.Sequelize.ENUM("male", "female"), allowNull: true },
+    city:        { type: db.Sequelize.STRING, allowNull: true },
+    village:     { type: db.Sequelize.STRING, allowNull: true },
+    district:    { type: db.Sequelize.STRING, allowNull: true },
+    state:       { type: db.Sequelize.STRING, allowNull: true },
+    stateId:     { type: db.Sequelize.INTEGER, allowNull: true },
+    districtId:  { type: db.Sequelize.INTEGER, allowNull: true },
+    pincode:     { type: db.Sequelize.STRING, allowNull: true },
+    pincodeId:   { type: db.Sequelize.INTEGER, allowNull: true },
+    postOffice:  { type: db.Sequelize.STRING, allowNull: true },
+    postOfficeId:{ type: db.Sequelize.INTEGER, allowNull: true },
+    area:        { type: db.Sequelize.STRING, allowNull: true },
+    address:     { type: db.Sequelize.TEXT, allowNull: true },
+    isActive:    { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
+  };
+  for (const [col, def] of Object.entries(userPersonalColumns)) {
+    await ensureColumn(queryInterface, "users", col, def);
+  }
+
+  // Copy personal/location data from labours → users (fill nulls only)
+  try {
+    await db.sequelize.query(`
+      UPDATE "users" u
+      SET
+        age          = COALESCE(u.age,         l.age),
+        gender       = COALESCE(u.gender,      l.gender),
+        "profileImage" = COALESCE(u."profileImage", l."profileImage"),
+        city         = COALESCE(u.city,        l.city),
+        village      = COALESCE(u.village,     l.village),
+        district     = COALESCE(u.district,    l.district),
+        state        = COALESCE(u.state,       l.state),
+        "stateId"    = COALESCE(u."stateId",   l."stateId"),
+        "districtId" = COALESCE(u."districtId",l."districtId"),
+        pincode      = COALESCE(u.pincode,     l.pincode),
+        "pincodeId"  = COALESCE(u."pincodeId", l."pincodeId"),
+        "postOffice" = COALESCE(u."postOffice",l."postOffice"),
+        "postOfficeId" = COALESCE(u."postOfficeId", l."postOfficeId"),
+        area         = COALESCE(u.area,        l.area),
+        address      = COALESCE(u.address,     l.address)
+      FROM "labours" l
+      WHERE l."userId" = u.id
+    `);
+    console.log("Copied labours personal data → users");
+  } catch (e) {
+    console.warn("labours → users personal data copy skipped:", e.message);
+  }
+
+  // Copy personal/location data from owners → users (fill nulls only)
+  try {
+    await db.sequelize.query(`
+      UPDATE "users" u
+      SET
+        age          = COALESCE(u.age,         o.age),
+        gender       = COALESCE(u.gender,      o.gender),
+        "profileImage" = COALESCE(u."profileImage", o."profileImage"),
+        city         = COALESCE(u.city,        o.city),
+        village      = COALESCE(u.village,     o.village),
+        district     = COALESCE(u.district,    o.district),
+        state        = COALESCE(u.state,       o.state),
+        pincode      = COALESCE(u.pincode,     o.pincode),
+        "postOffice" = COALESCE(u."postOffice",o."postOffice"),
+        area         = COALESCE(u.area,        o.area),
+        address      = COALESCE(u.address,     o.address)
+      FROM "owners" o
+      WHERE o."userId" = u.id
+    `);
+    console.log("Copied owners personal data → users");
+  } catch (e) {
+    console.warn("owners → users personal data copy skipped:", e.message);
+  }
 
   // Migrate labours → users (creates user row for every labour that doesn't have one yet)
   try {

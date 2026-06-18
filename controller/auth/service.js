@@ -76,6 +76,19 @@ const registerService = async (payload) => {
       phone: normalizedPhone,
       registeredAs: role,
       status: 1,
+      age: age ? Number(age) : null,
+      gender: gender || null,
+      city: city || null,
+      state: state || null,
+      stateId: stateId || null,
+      district: district || null,
+      districtId: districtId || null,
+      pincode: pincode || null,
+      pincodeId: pincodeId || null,
+      postOffice: postOffice || null,
+      postOfficeId: postOfficeId || null,
+      area: area || null,
+      address: address || null,
     }, { transaction: t });
 
     let newProfile = null;
@@ -85,19 +98,6 @@ const registerService = async (payload) => {
         userId: newUser.id,
         name,
         phone: normalizedPhone,
-        age: Number(age),
-        gender,
-        city: city || null,
-        state: state || null,
-        stateId: stateId || null,
-        district: district || null,
-        districtId: districtId || null,
-        pincode: pincode || null,
-        pincodeId: pincodeId || null,
-        postOffice: postOffice || null,
-        postOfficeId: postOfficeId || null,
-        area: area || null,
-        address: address || null,
         isAvailable: true,
         isVerified: false,
         registeredFrom: "labour",
@@ -116,15 +116,6 @@ const registerService = async (payload) => {
         name,
         phone: normalizedPhone,
         workType: workType || "both",
-        city: city || null,
-        state: state || null,
-        district: district || null,
-        pincode: pincode || null,
-        area: area || null,
-        postOffice: postOffice || null,
-        address: address || null,
-        age: age ? Number(age) : null,
-        gender: gender || null,
         isActive: true,
         registeredFrom: role,
         status: 1,
@@ -182,15 +173,6 @@ const completeOwnerProfileService = async ({ userId, userType, workType, city, s
     name: profileRecord.name,
     phone: profileRecord.phone,
     workType: workType || "both",
-    city: city || profileRecord.city || null,
-    state: state || profileRecord.state || null,
-    district: district || profileRecord.district || null,
-    pincode: pincode || profileRecord.pincode || null,
-    area: area || profileRecord.area || null,
-    postOffice: postOffice || profileRecord.postOffice || null,
-    address: address || profileRecord.address || null,
-    age: profileRecord.age || null,
-    gender: profileRecord.gender || null,
     isActive: true,
     registeredFrom: "owner",
     status: 1,
@@ -224,23 +206,31 @@ const completeLabourProfileService = async ({ userId, userType, skills, age, gen
     return { statusCode: 200, body: { success: true, message: "Labour profile already exists", profile: existing } };
   }
 
+  // Update users table with labour-specific personal data (age, gender, location)
+  if (profileRecord.userId) {
+    const userUpdateData = {};
+    if (age) userUpdateData.age = Number(age);
+    if (gender) userUpdateData.gender = gender;
+    if (city) userUpdateData.city = city;
+    if (state) userUpdateData.state = state;
+    if (stateId) userUpdateData.stateId = stateId;
+    if (district) userUpdateData.district = district;
+    if (districtId) userUpdateData.districtId = districtId;
+    if (pincode) userUpdateData.pincode = pincode;
+    if (pincodeId) userUpdateData.pincodeId = pincodeId;
+    if (postOffice) userUpdateData.postOffice = postOffice;
+    if (postOfficeId) userUpdateData.postOfficeId = postOfficeId;
+    if (area) userUpdateData.area = area;
+    if (address) userUpdateData.address = address;
+    if (Object.keys(userUpdateData).length > 0) {
+      await db.user.update(userUpdateData, { where: { id: profileRecord.userId } });
+    }
+  }
+
   const newLabour = await Labour.create({
     userId: profileRecord.userId || null,
     name: profileRecord.name,
     phone: profileRecord.phone,
-    age: Number(age),
-    gender,
-    city: city || profileRecord.city || null,
-    state: state || profileRecord.state || null,
-    stateId: stateId || null,
-    district: district || profileRecord.district || null,
-    districtId: districtId || null,
-    pincode: pincode || profileRecord.pincode || null,
-    pincodeId: pincodeId || null,
-    postOffice: postOffice || profileRecord.postOffice || null,
-    postOfficeId: postOfficeId || null,
-    area: area || profileRecord.area || null,
-    address: address || profileRecord.address || null,
     isAvailable: true,
     isVerified: false,
     registeredFrom: "labour",
