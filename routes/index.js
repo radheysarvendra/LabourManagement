@@ -19,7 +19,12 @@ router.get("/", (req, res) => {
   res.status(200).send({
     success: true,
     message: "Labour backend is live",
+    _commit: "8d49d6b",
   });
+});
+
+router.get("/api/health", (req, res) => {
+  res.status(200).json({ ok: true, commit: "8d49d6b" });
 });
 
 router.get("/health", (req, res) => {

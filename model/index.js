@@ -47,11 +47,13 @@ const connectDB = async () => {
     console.log("PostgreSQL Connected Successfully");
 
     if (shouldSyncDatabase) {
-      // alter:false → only creates missing tables, never modifies existing ones (prevents data loss)
       await sequelize.sync({ alter: false, force: false });
-      // ensureSchema safely adds missing columns one-by-one using ADD COLUMN IF NOT EXISTS
-      await ensureSchema(db);
-      console.log("Database models are ready");
+      try {
+        await ensureSchema(db);
+        console.log("Database models are ready");
+      } catch (schemaErr) {
+        console.warn("ensureSchema warning (non-fatal):", schemaErr.message);
+      }
     }
 
   } catch (error) {
