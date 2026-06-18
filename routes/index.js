@@ -10,6 +10,7 @@ const bookingController = require("../controller/booking/index");
 const orderController = require("../controller/order/index");
 const workAssignmentController = require("../controller/workAssignment/index");
 const authController = require("../middleware/auth/index");
+const newAuthController = require("../controller/auth/index");
 const roleController = require("../controller/Permission_roles/index");
 const adminController = require("../controller/admin/index");
 const { verifyAdminToken, allowAdminModule } = require("../middleware/adminAuth");
@@ -56,6 +57,11 @@ router.get("/api/status", async (req, res) => {
 });
 
 // Labour routes  (createLabour → /labour POST)
+// Unified registration (new flow — all 4 roles, single registration)
+router.post("/api/auth/register", newAuthController.register);
+router.post("/api/profile/complete-owner", verifyToken, newAuthController.completeOwnerProfile);
+router.post("/api/profile/complete-labour", verifyToken, newAuthController.completeLabourProfile);
+
 router.post("/auth/login", authController.login);
 router.post("/auth/check-phone", authController.checkPhone);
 router.post("/auth/request-otp", authController.requestOtp);

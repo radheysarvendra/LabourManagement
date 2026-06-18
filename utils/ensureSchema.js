@@ -37,6 +37,15 @@ const dropConstraintIfExists = async (sequelize, table, constraint) => {
   `);
 };
 
+const ensureTable = async (sequelize, tableName, createSQL) => {
+  try {
+    await sequelize.query(`SELECT 1 FROM "${tableName}" LIMIT 1`);
+  } catch (e) {
+    await sequelize.query(createSQL);
+    console.log(`Created table ${tableName}`);
+  }
+};
+
 const ensureSchema = async (db) => {
   const queryInterface = db.sequelize.getQueryInterface();
   const userTypeEnumValues = [
@@ -125,6 +134,60 @@ const ensureSchema = async (db) => {
   const orderMappingColumns = {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
   };
+
+  // Create users table (unified identity — one row per person regardless of role)
+  await ensureTable(db.sequelize, "users", `
+    CREATE TABLE "users" (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      phone VARCHAR(255) NOT NULL UNIQUE,
+      "registeredAs" VARCHAR(50) NOT NULL DEFAULT 'labour',
+      "profileImage" VARCHAR(255),
+      status INTEGER NOT NULL DEFAULT 1,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // Migrate labours → users (creates user row for every labour that doesn't have one yet)
+  try {
+    await db.sequelize.query(`
+      INSERT INTO "users" (name, phone, "registeredAs", "profileImage", status, "createdAt", "updatedAt")
+      SELECT DISTINCT ON (phone)
+        name, phone, COALESCE("registeredFrom", 'labour'), "profileImage", status, "createdAt", "updatedAt"
+      FROM "labours"
+      WHERE phone NOT IN (SELECT phone FROM "users")
+      ON CONFLICT (phone) DO NOTHING
+    `);
+    await db.sequelize.query(`
+      UPDATE "labours" l SET "userId" = u.id
+      FROM "users" u
+      WHERE l.phone = u.phone AND l."userId" IS NULL
+    `);
+    console.log("Migrated labours → users");
+  } catch (e) {
+    console.warn("labours → users migration skipped:", e.message);
+  }
+
+  // Migrate owners → users (merge by phone, skip if already exists from labours)
+  try {
+    await db.sequelize.query(`
+      INSERT INTO "users" (name, phone, "registeredAs", "profileImage", status, "createdAt", "updatedAt")
+      SELECT DISTINCT ON (phone)
+        name, phone, COALESCE("registeredFrom", 'owner'), "profileImage", 1, "createdAt", "updatedAt"
+      FROM "owners"
+      WHERE phone NOT IN (SELECT phone FROM "users")
+      ON CONFLICT (phone) DO NOTHING
+    `);
+    await db.sequelize.query(`
+      UPDATE "owners" o SET "userId" = u.id
+      FROM "users" u
+      WHERE o.phone = u.phone AND o."userId" IS NULL
+    `);
+    console.log("Migrated owners → users");
+  } catch (e) {
+    console.warn("owners → users migration skipped:", e.message);
+  }
 
   await dropConstraintIfExists(db.sequelize, "orderMappings", "orderMappings_ownerId_fkey");
   await dropConstraintIfExists(db.sequelize, "workAssignments", "workAssignments_ownerId_fkey");

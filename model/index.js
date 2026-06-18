@@ -63,6 +63,7 @@ const connectDB = async () => {
 };
 
 // FIX: lowercase keys — controller ke saath match karta hai
+db.user = require("./user")(sequelize, DataTypes);
 db.labour = require("./labour")(sequelize, DataTypes);
 db.owner = require("./owner")(sequelize, DataTypes);
 db.skill = require("./skill")(sequelize, DataTypes);
@@ -87,6 +88,13 @@ db.workAssignment = require("./workAssignment")(sequelize, DataTypes);
 db.workAssignmentLabour = require("./workAssignmentLabour")(sequelize, DataTypes);
 db.workAttendance = require("./workAttendance")(sequelize, DataTypes);
 db.workPayment = require("./workPayment")(sequelize, DataTypes);
+
+// NOTE - users → labours/owners (unified identity)
+db.user.hasOne(db.labour, { foreignKey: "userId", as: "labourProfile" });
+db.labour.belongsTo(db.user, { foreignKey: "userId", as: "user" });
+
+db.user.hasOne(db.owner, { foreignKey: "userId", as: "ownerProfile" });
+db.owner.belongsTo(db.user, { foreignKey: "userId", as: "user" });
 
 // NOTE - labour skills map
 db.labour.hasMany(db.labourSkill, {
