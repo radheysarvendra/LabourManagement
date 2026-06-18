@@ -88,6 +88,7 @@ db.workAssignment = require("./workAssignment")(sequelize, DataTypes);
 db.workAssignmentLabour = require("./workAssignmentLabour")(sequelize, DataTypes);
 db.workAttendance = require("./workAttendance")(sequelize, DataTypes);
 db.workPayment = require("./workPayment")(sequelize, DataTypes);
+db.contractorSkill = require("./contractorSkill")(sequelize, DataTypes);
 
 // NOTE - users → labours/owners (unified identity)
 db.user.hasOne(db.labour, { foreignKey: "userId", as: "labourProfile" });
@@ -95,6 +96,38 @@ db.labour.belongsTo(db.user, { foreignKey: "userId", as: "user" });
 
 db.user.hasOne(db.owner, { foreignKey: "userId", as: "ownerProfile" });
 db.owner.belongsTo(db.user, { foreignKey: "userId", as: "user" });
+
+db.owner.belongsTo(db.skill, {
+  foreignKey: "skillId",
+  otherKey: "id",
+  as: "skillDetail",
+});
+
+db.skill.hasMany(db.owner, {
+  foreignKey: "skillId",
+  sourceKey: "id",
+  as: "contractors",
+});
+
+db.owner.belongsTo(db.category, {
+  foreignKey: "categoryId",
+  otherKey: "id",
+  as: "categoryDetail",
+});
+
+db.category.hasMany(db.owner, {
+  foreignKey: "categoryId",
+  sourceKey: "id",
+  as: "contractors",
+});
+
+// NOTE - contractor skills map (owner with registeredFrom='contractor' can have multiple skills)
+db.owner.hasMany(db.contractorSkill, { foreignKey: "contractorId", as: "contractorSkills", onDelete: "CASCADE" });
+db.contractorSkill.belongsTo(db.owner, { foreignKey: "contractorId", as: "contractor" });
+db.skill.hasMany(db.contractorSkill, { foreignKey: "skillId", as: "contractorSkills" });
+db.contractorSkill.belongsTo(db.skill, { foreignKey: "skillId", as: "skill" });
+db.category.hasMany(db.contractorSkill, { foreignKey: "categoryId", as: "contractorSkills" });
+db.contractorSkill.belongsTo(db.category, { foreignKey: "categoryId", as: "category" });
 
 // NOTE - labour skills map
 db.labour.hasMany(db.labourSkill, {

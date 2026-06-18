@@ -77,6 +77,8 @@ const ensureSchema = async (db) => {
   const ownerColumns = {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
     registeredFrom: registeredFromEnum,
+    categoryId: { type: db.Sequelize.INTEGER, allowNull: true },
+    skillId: { type: db.Sequelize.INTEGER, allowNull: true },
     status: { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
     isActive: { type: db.Sequelize.BOOLEAN, allowNull: true, defaultValue: true },
     createdById: { type: db.Sequelize.INTEGER, allowNull: true },
@@ -318,6 +320,37 @@ const ensureSchema = async (db) => {
     console.warn("Order ownerName backfill skipped:", e.message);
   }
 
+  // Create contractorSkills table (multi-skill mapping for contractors)
+  await ensureTable(db.sequelize, "contractorSkills", `
+    CREATE TABLE "contractorSkills" (
+      id SERIAL PRIMARY KEY,
+      "contractorId" INTEGER NOT NULL,
+      "categoryId" INTEGER,
+      "skillId" INTEGER NOT NULL,
+      price INTEGER DEFAULT 0,
+      "experienceYears" INTEGER DEFAULT 0,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE ("contractorId", "skillId")
+    )
+  `);
+
+  // Backfill contractorSkills from owners.skillId for existing contractors
+  try {
+    await db.sequelize.query(`
+      INSERT INTO "contractorSkills" ("contractorId", "categoryId", "skillId", "createdAt", "updatedAt")
+      SELECT id, "categoryId", "skillId", NOW(), NOW()
+      FROM "owners"
+      WHERE "registeredFrom" = 'contractor'
+        AND "skillId" IS NOT NULL
+        AND id NOT IN (SELECT "contractorId" FROM "contractorSkills")
+      ON CONFLICT ("contractorId", "skillId") DO NOTHING
+    `);
+    console.log("Backfilled contractorSkills from owners");
+  } catch (e) {
+    console.warn("contractorSkills backfill skipped:", e.message);
+  }
+
   await ensureIndex(queryInterface, "labours", ["stateId"], "idx_labours_state_id");
   await ensureIndex(queryInterface, "labours", ["districtId"], "idx_labours_district_id");
   await ensureIndex(queryInterface, "labours", ["pincodeId"], "idx_labours_pincode_id");
@@ -333,6 +366,8 @@ const ensureSchema = async (db) => {
   await ensureIndex(queryInterface, "orders", ["needType"], "idx_orders_need_type");
   await ensureIndex(queryInterface, "bookings", ["requiredDate"], "idx_bookings_required_date");
   await ensureIndex(queryInterface, "orderMappings", ["userId"], "idx_order_mappings_user_id");
+  await ensureIndex(queryInterface, "owners", ["categoryId"], "idx_owners_category_id");
+  await ensureIndex(queryInterface, "owners", ["skillId"], "idx_owners_skill_id");
   try {
     await ensureIndex(
       queryInterface,
