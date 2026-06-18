@@ -25,6 +25,14 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: "both",
     },
+    categoryId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    skillId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,

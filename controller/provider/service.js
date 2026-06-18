@@ -6,7 +6,6 @@ const Owner = db.owner;
 const User = db.user;
 const Skill = db.skill;
 const Category = db.category;
-const ContractorSkill = db.contractorSkill;
 
 const normalizeProviderType = (value) => (
   String(value || "").toLowerCase() === "contractor" ? "contractor" : "labour"
@@ -64,10 +63,8 @@ const buildUserLocationWhere = ({ stateId, districtId, pincodeId, postOfficeId, 
 const mapContractor = (owner) => {
   const json = owner.toJSON ? owner.toJSON() : owner;
   const user = json.user || {};
-  const skills = Array.isArray(json.contractorSkills) ? json.contractorSkills : [];
-  const primary = skills[0] || {};
-  const skillDetail = primary.skill || {};
-  const categoryDetail = primary.category || {};
+  const skill = json.skillDetail || {};
+  const category = json.categoryDetail || {};
 
   return {
     id: json.id,
@@ -76,22 +73,11 @@ const mapContractor = (owner) => {
     phone: json.phone,
     providerType: "contractor",
     workType: json.workType,
-    // Primary skill (first matched)
-    categoryId: categoryDetail.id || json.categoryId || null,
-    categoryName: categoryDetail.name || null,
-    skillId: skillDetail.id || json.skillId || null,
-    skillName: skillDetail.skillName || null,
-    hindi: skillDetail.hindi || null,
-    // All skills this contractor has
-    skills: skills.map((cs) => ({
-      skillId: cs.skillId,
-      skillName: cs.skill?.skillName || null,
-      categoryId: cs.categoryId,
-      categoryName: cs.category?.name || null,
-      price: cs.price,
-      experienceYears: cs.experienceYears,
-    })),
-    // Location from users table
+    categoryId: json.categoryId,
+    categoryName: category.name || null,
+    skillId: json.skillId,
+    skillName: skill.skillName || null,
+    hindi: skill.hindi || null,
     stateId: user.stateId || null,
     districtId: user.districtId || null,
     pincodeId: user.pincodeId || null,
@@ -122,14 +108,11 @@ const searchContractors = async ({
   const offset = (pageNumber - 1) * pageLimit;
 
   const ownerWhere = { registeredFrom: "contractor", isActive: true };
+  if (categoryId) ownerWhere.categoryId = Number(categoryId);
+  if (skillId) ownerWhere.skillId = Number(skillId);
+
   const userWhere = buildUserLocationWhere({ stateId, districtId, pincodeId, postOfficeId, state, district, pincode, postOffice });
   const hasLocationFilter = Object.keys(userWhere).length > 0;
-
-  // Filter by skill/category via contractorSkills JOIN (multi-skill support)
-  const skillWhere = {};
-  if (skillId) skillWhere.skillId = Number(skillId);
-  if (categoryId) skillWhere.categoryId = Number(categoryId);
-  const hasSkillFilter = Object.keys(skillWhere).length > 0;
 
   const result = await Owner.findAndCountAll({
     where: ownerWhere,
@@ -141,17 +124,8 @@ const searchContractors = async ({
         attributes: ["id", "name", "age", "gender", "profileImage", "city", "district", "state", "stateId", "districtId", "pincode", "pincodeId", "postOffice", "postOfficeId", "area"],
         ...(hasLocationFilter ? { where: userWhere } : {}),
       },
-      {
-        model: ContractorSkill,
-        as: "contractorSkills",
-        // INNER JOIN only when skill/category filter is applied — ensures contractor has that skill
-        required: hasSkillFilter,
-        ...(hasSkillFilter ? { where: skillWhere } : {}),
-        include: [
-          { model: Skill, as: "skill", required: false },
-          { model: Category, as: "category", required: false },
-        ],
-      },
+      { model: Skill, as: "skillDetail", required: false },
+      { model: Category, as: "categoryDetail", required: false },
     ],
     distinct: true,
     order: [["createdAt", "DESC"]],

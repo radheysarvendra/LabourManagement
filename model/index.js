@@ -88,7 +88,6 @@ db.workAssignment = require("./workAssignment")(sequelize, DataTypes);
 db.workAssignmentLabour = require("./workAssignmentLabour")(sequelize, DataTypes);
 db.workAttendance = require("./workAttendance")(sequelize, DataTypes);
 db.workPayment = require("./workPayment")(sequelize, DataTypes);
-db.contractorSkill = require("./contractorSkill")(sequelize, DataTypes);
 
 // NOTE - users → labours/owners (unified identity)
 db.user.hasOne(db.labour, { foreignKey: "userId", as: "labourProfile" });
@@ -120,14 +119,6 @@ db.category.hasMany(db.owner, {
   sourceKey: "id",
   as: "contractors",
 });
-
-// NOTE - contractor skills map (owner with registeredFrom='contractor' can have multiple skills)
-db.owner.hasMany(db.contractorSkill, { foreignKey: "contractorId", as: "contractorSkills", onDelete: "CASCADE" });
-db.contractorSkill.belongsTo(db.owner, { foreignKey: "contractorId", as: "contractor" });
-db.skill.hasMany(db.contractorSkill, { foreignKey: "skillId", as: "contractorSkills" });
-db.contractorSkill.belongsTo(db.skill, { foreignKey: "skillId", as: "skill" });
-db.category.hasMany(db.contractorSkill, { foreignKey: "categoryId", as: "contractorSkills" });
-db.contractorSkill.belongsTo(db.category, { foreignKey: "categoryId", as: "category" });
 
 // NOTE - labour skills map
 db.labour.hasMany(db.labourSkill, {

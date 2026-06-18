@@ -50,6 +50,8 @@ const mapOwnerWithUser = (owner) => {
     name: json.name,
     phone: json.phone,
     workType: json.workType,
+    categoryId: json.categoryId,
+    skillId: json.skillId,
     isActive: json.isActive,
     registeredFrom: json.registeredFrom,
     status: json.status,
@@ -116,7 +118,7 @@ const buildOwnerSession = async (owner, userType, message, statusCode = 200) => 
 
 const createOwnerService = async (payload) => {
   const {
-    name, phone, workType, village, city, district, state, pincode, area,
+    name, phone, workType, categoryId, skillId, village, city, district, state, pincode, area,
     postOffice, address, age, gender, profileImage, role, userType, registeredFrom,
   } = payload;
   const sessionUserType = normalizeOwnerRole(userType || role);
@@ -153,6 +155,8 @@ const createOwnerService = async (payload) => {
     userId: userRow.id,
     name, phone,
     workType: normalizeWorkType(workType),
+    categoryId: categoryId || null,
+    skillId: skillId || null,
     isActive: true,
     registeredFrom: resolvedRegisteredFrom,
     status: 1,
@@ -198,6 +202,8 @@ const updateOwnerService = async (id, payload) => {
   if (payload.name !== undefined) ownerUpdate.name = payload.name;
   if (payload.phone !== undefined) ownerUpdate.phone = payload.phone;
   if (payload.workType !== undefined) ownerUpdate.workType = normalizeWorkType(payload.workType);
+  if (payload.categoryId !== undefined) ownerUpdate.categoryId = payload.categoryId || null;
+  if (payload.skillId !== undefined) ownerUpdate.skillId = payload.skillId || null;
   if (payload.isActive !== undefined) ownerUpdate.isActive = payload.isActive;
   if (payload.status !== undefined) ownerUpdate.status = payload.status;
   if (Object.keys(ownerUpdate).length > 0) {

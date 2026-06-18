@@ -25,6 +25,8 @@ const registerService = async (payload) => {
     postOffice,
     address,
     workType,
+    categoryId,
+    skillId,
     stateId,
     districtId,
     pincodeId,
@@ -116,6 +118,8 @@ const registerService = async (payload) => {
         name,
         phone: normalizedPhone,
         workType: workType || "both",
+        categoryId: categoryId || null,
+        skillId: skillId || null,
         isActive: true,
         registeredFrom: role,
         status: 1,
@@ -154,7 +158,7 @@ const registerService = async (payload) => {
 };
 
 // Called when a labour user wants to use owner role for the first time
-const completeOwnerProfileService = async ({ userId, userType, workType, city, state, district, pincode, area, postOffice, address }) => {
+const completeOwnerProfileService = async ({ userId, userType, workType, categoryId, skillId, city, state, district, pincode, area, postOffice, address }) => {
   const profileRecord = userType === "labour"
     ? await Labour.findOne({ where: { id: userId } })
     : await Owner.findOne({ where: { id: userId } });
@@ -173,6 +177,8 @@ const completeOwnerProfileService = async ({ userId, userType, workType, city, s
     name: profileRecord.name,
     phone: profileRecord.phone,
     workType: workType || "both",
+    categoryId: categoryId || null,
+    skillId: skillId || null,
     isActive: true,
     registeredFrom: "owner",
     status: 1,

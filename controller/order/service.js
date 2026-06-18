@@ -1,5 +1,6 @@
 const db = require("../../model/index.js");
 const workAssignmentService = require("../workAssignment/service");
+const providerService = require("../provider/service");
 
 const Order = db.order;
 const OrderMapping = db.orderMapping;
@@ -81,7 +82,7 @@ const generateOrderCode = async () => {
 };
 
 const getRequiredLabourCount = (payload) => (
-  Number(payload.requiredLabourCount ?? payload.labourRequired) || 1
+  Number(payload.requiredProviderCount ?? payload.requiredLabourCount ?? payload.labourRequired) || 1
 );
 
 const normalizeNeedType = (payload = {}) => {
@@ -249,6 +250,33 @@ const createOrderService = async (payload) => {
     };
   }
 
+  const availability = await providerService.ensureProviderAvailable({
+    providerType: needType,
+    categoryId,
+    skillId,
+    skill: skillName,
+    stateId,
+    districtId,
+    pincodeId,
+    postOfficeId,
+    state,
+    district,
+    pincode,
+    postOffice,
+  });
+
+  if (!availability.ok) {
+    return {
+      statusCode: 404,
+      body: {
+        success: false,
+        message: availability.message,
+        providerType: availability.providerType,
+        matchedCount: availability.matchedCount,
+      },
+    };
+  }
+
   const order = await db.sequelize.transaction(async (transaction) => {
     const createdOrder = await Order.create({
       orderCode: await generateOrderCode(),
@@ -281,7 +309,7 @@ const createOrderService = async (payload) => {
       userId,
       ownerId: null,
       labourId: null,
-      userType: needType === "contractor" ? "contractor" : "owner",
+      userType: "owner",
       skill: skillName,
       status: "requested",
       adminStatus: "pending",
@@ -308,7 +336,12 @@ const createOrderService = async (payload) => {
       message: "आपकी रिक्वेस्ट भेज दी गई है। Admin approval ke baad booking confirm hogi.",
       requiredCount,
       allocatedCount: 0,
-      data: mapOrder(createdData, createdUserMap),
+      matchedCount: availability.matchedCount,
+      data: {
+        ...mapOrder(createdData, createdUserMap),
+        matchedCount: availability.matchedCount,
+        assignedProviderCount: 0,
+      },
     },
   };
 };
@@ -518,6 +551,13 @@ const updateOrderAdminStatusService = async (id, payload) => {
     }
   }
 
+  if (adminStatus === "approved" && isContractorOrder && selectedContractorIds.length < 1) {
+    return {
+      statusCode: 400,
+      body: { success: false, message: "Approval ke liye contractorIds required hain" },
+    };
+  }
+
   let createdWorkAssignmentId = null;
 
   await db.sequelize.transaction(async (transaction) => {
@@ -609,7 +649,7 @@ const approveOrderService = async (id, payload) => {
     statusCode: 200,
     body: {
       ...result.body,
-      message: "Order approved and labours assigned.",
+      message: "Order approved and provider assigned.",
     },
   };
 };
