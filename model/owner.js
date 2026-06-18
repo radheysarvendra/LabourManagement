@@ -78,9 +78,9 @@ module.exports = (sequelize, DataTypes) => {  // FIX: DataTypes bhi receive karo
       defaultValue: true,
     },
     registeredFrom: {
-      type: DataTypes.ENUM("labour", "want_labour", "contractor", "contractor_customer"),
+      type: DataTypes.ENUM("labour", "owner", "contractor", "contractor_customer", "want_labour"),
       allowNull: true,
-      defaultValue: "want_labour",
+      defaultValue: "owner",
     },
     createdById: {
       type: DataTypes.INTEGER,

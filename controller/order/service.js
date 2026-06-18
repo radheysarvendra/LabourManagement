@@ -17,11 +17,25 @@ const orderInclude = [
     model: OrderMapping,
     as: "mappings",
     include: [
-      { model: Owner, as: "owner" },
-      { model: Labour, as: "labour" },
+      { model: Owner, as: "owner", required: false },
+      { model: Labour, as: "labour", required: false },
     ],
   },
 ];
+
+// Batch-fetch user name/phone from Labour or Owner table for new-flow orders
+// (ownerId=null, userId set) where Sequelize JOIN via ownerId returns null.
+const resolveUserIds = async (userIds) => {
+  if (!userIds || userIds.length === 0) return {};
+  const [labours, owners] = await Promise.all([
+    Labour.findAll({ where: { id: userIds }, attributes: ["id", "name", "phone"] }),
+    Owner.findAll({ where: { id: userIds }, attributes: ["id", "name", "phone"] }),
+  ]);
+  const map = {};
+  labours.forEach((l) => { map[l.id] = { id: l.id, name: l.name, phone: l.phone }; });
+  owners.forEach((o) => { if (!map[o.id]) map[o.id] = { id: o.id, name: o.name, phone: o.phone }; });
+  return map;
+};
 
 const generateOrderCode = async () => {
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -74,13 +88,23 @@ const normalizeSelectedLabours = (payload = {}, defaultSkill = null) => {
     .filter(Boolean);
 };
 
-const mapOrder = (order) => {
+const mapOrder = (order, userMap = {}) => {
   const json = order.toJSON ? order.toJSON() : order;
   const mappings = Array.isArray(json.mappings) ? json.mappings : [];
   const labourMappings = mappings.filter((item) => item.userType === "labour");
   const contractorMappings = mappings.filter((item) => item.userType === "contractor");
   const skillDetail = json.skillDetail || null;
   const needType = json.needType || "labour";
+
+  // Fallback chain for owner resolution:
+  // 1. ownerId JOIN (old-flow) → 2. batch-fetched userId record → 3. denormalized ownerName field
+  const ownerMappingRaw = mappings.find((item) => item.userType === "owner") || null;
+  const resolvedOwner = ownerMappingRaw?.owner
+    || (ownerMappingRaw?.userId ? userMap[ownerMappingRaw.userId] || null : null)
+    || (json.ownerName ? { id: null, name: json.ownerName, phone: json.ownerPhone } : null);
+  const ownerMapping = ownerMappingRaw
+    ? { ...ownerMappingRaw, owner: resolvedOwner }
+    : null;
 
   return {
     ...json,
@@ -108,7 +132,7 @@ const mapOrder = (order) => {
     bookingFor: needType,
     requestedProviderRole: needType,
     workAssignmentId: json.workAssignment?.id || null,
-    ownerMapping: mappings.find((item) => item.userType === "owner") || null,
+    ownerMapping,
     contractorMapping: contractorMappings[0] || null,
     contractorId: contractorMappings[0]?.ownerId || null,
     labourMappings,
@@ -120,6 +144,7 @@ const createOrderService = async (payload) => {
   const {
     userId,
     ownerId,
+    _userType,
     categoryId,
     categoryName,
     skillId,
@@ -164,10 +189,12 @@ const createOrderService = async (payload) => {
   const categoryData = categoryId ? await Category.findOne({ where: { id: categoryId } }) : null;
   const skillName = skill || skillData?.skillName;
 
-  // userId se user dhundo — Labour ya Owner dono check karo
-  const userRecord =
-    await Owner.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] }) ||
-    await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] });
+  // Token ke userType se correct table mein dhundo (Labour ya Owner ID collision avoid karo)
+  const isLabourUser = _userType === "labour";
+  const userRecord = isLabourUser
+    ? await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] })
+    : (await Owner.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] }) ||
+       await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] }));
   const ownerName = userRecord?.name || null;
   const ownerPhone = userRecord?.phone || null;
 
@@ -238,6 +265,12 @@ const createOrderService = async (payload) => {
     include: orderInclude,
   });
 
+  const createdJson = createdData.toJSON ? createdData.toJSON() : createdData;
+  const createdOwnerM = (createdJson.mappings || []).find((m) => m.userType === "owner");
+  const createdUserMap = createdOwnerM && createdOwnerM.userId && !createdOwnerM.owner
+    ? await resolveUserIds([createdOwnerM.userId])
+    : {};
+
   return {
     statusCode: 201,
     body: {
@@ -245,7 +278,7 @@ const createOrderService = async (payload) => {
       message: "आपकी रिक्वेस्ट भेज दी गई है। Admin approval ke baad booking confirm hogi.",
       requiredCount,
       allocatedCount: 0,
-      data: mapOrder(createdData),
+      data: mapOrder(createdData, createdUserMap),
     },
   };
 };
@@ -302,7 +335,7 @@ const getOrdersService = async ({
     } else if (labourId) {
       mappingWhere = { labourId, userType: "labour" };
     } else if (contractorId) {
-      mappingWhere = { ownerId: contractorId, userType: "contractor" };
+      mappingWhere = { ownerId: Number(contractorId), userType: "contractor" };
     }
 
     include[mappingsIncludeIndex] = {
@@ -321,6 +354,14 @@ const getOrdersService = async ({
     limit: pageLimit,
   });
 
+  const pendingUserIds = [];
+  result.rows.forEach((row) => {
+    const json = row.toJSON ? row.toJSON() : row;
+    const ownerM = (json.mappings || []).find((m) => m.userType === "owner");
+    if (ownerM && ownerM.userId && !ownerM.owner) pendingUserIds.push(ownerM.userId);
+  });
+  const userMap = await resolveUserIds([...new Set(pendingUserIds)]);
+
   return {
     statusCode: 200,
     body: {
@@ -329,7 +370,7 @@ const getOrdersService = async ({
       page: pageNumber,
       limit: pageLimit,
       totalPages: Math.ceil(result.count / pageLimit),
-      data: result.rows.map(mapOrder),
+      data: result.rows.map((o) => mapOrder(o, userMap)),
     },
   };
 };
@@ -344,9 +385,15 @@ const getOrderByIdService = async (id) => {
     };
   }
 
+  const json = data.toJSON ? data.toJSON() : data;
+  const ownerM = (json.mappings || []).find((m) => m.userType === "owner");
+  const userMap = ownerM && ownerM.userId && !ownerM.owner
+    ? await resolveUserIds([ownerM.userId])
+    : {};
+
   return {
     statusCode: 200,
-    body: { success: true, data: mapOrder(data) },
+    body: { success: true, data: mapOrder(data, userMap) },
   };
 };
 

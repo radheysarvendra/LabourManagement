@@ -128,8 +128,12 @@ const ensureSchema = async (db) => {
 
   await dropConstraintIfExists(db.sequelize, "orderMappings", "orderMappings_ownerId_fkey");
   await dropConstraintIfExists(db.sequelize, "workAssignments", "workAssignments_ownerId_fkey");
-  await db.sequelize.query(`ALTER TABLE "workAssignments" ALTER COLUMN "ownerId" DROP NOT NULL`);
-  await db.sequelize.query(`ALTER TABLE "workAssignments" ALTER COLUMN "orderId" DROP NOT NULL`);
+  try {
+    await db.sequelize.query(`ALTER TABLE "workAssignments" ALTER COLUMN "ownerId" DROP NOT NULL`);
+    await db.sequelize.query(`ALTER TABLE "workAssignments" ALTER COLUMN "orderId" DROP NOT NULL`);
+  } catch (e) {
+    console.warn("workAssignments NOT NULL drop skipped:", e.message);
+  }
 
   await ensureEnumValues(db.sequelize, "enum_authOtps_userType", userTypeEnumValues);
   await ensureEnumValues(db.sequelize, "enum_mobile_token_maps_userType", userTypeEnumValues);
@@ -166,6 +170,38 @@ const ensureSchema = async (db) => {
 
   for (const [columnName, definition] of Object.entries(orderMappingColumns)) {
     await ensureColumn(queryInterface, "orderMappings", columnName, definition);
+  }
+
+  // Rename legacy "want_labour" registeredFrom value to "owner" in both tables
+  try {
+    await db.sequelize.query(`UPDATE "owners" SET "registeredFrom" = 'owner' WHERE "registeredFrom" = 'want_labour'`);
+    await db.sequelize.query(`UPDATE "labours" SET "registeredFrom" = 'owner' WHERE "registeredFrom" = 'want_labour'`);
+    console.log("Migrated registeredFrom: want_labour → owner");
+  } catch (e) {
+    console.warn("registeredFrom migration skipped:", e.message);
+  }
+
+  // Backfill ownerName/ownerPhone on orders created before denormalization was added.
+  // For new-flow orders (ownerId=null, userId set): checks labours first, then owners.
+  // For old-flow orders (ownerId set): joins owners directly.
+  // NULLIF treats empty strings as NULL so they get overwritten too.
+  try {
+    await db.sequelize.query(`
+      UPDATE "orders" AS o
+      SET
+        "ownerName" = COALESCE(NULLIF(o."ownerName", ''), la.name, ow_u.name, ow_o.name),
+        "ownerPhone" = COALESCE(NULLIF(o."ownerPhone", ''), la.phone, ow_u.phone, ow_o.phone)
+      FROM "orderMappings" AS m
+      LEFT JOIN "labours" AS la   ON la.id   = m."userId"
+      LEFT JOIN "owners"  AS ow_u ON ow_u.id = m."userId"
+      LEFT JOIN "owners"  AS ow_o ON ow_o.id = m."ownerId"
+      WHERE m."orderId" = o.id
+        AND m."userType" = 'owner'
+        AND (NULLIF(o."ownerName", '') IS NULL OR NULLIF(o."ownerPhone", '') IS NULL)
+    `);
+    console.log("Backfilled ownerName/ownerPhone on orders");
+  } catch (e) {
+    console.warn("Order ownerName backfill skipped:", e.message);
   }
 
   await ensureIndex(queryInterface, "labours", ["stateId"], "idx_labours_state_id");

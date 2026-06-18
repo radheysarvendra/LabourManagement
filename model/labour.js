@@ -104,7 +104,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
     },
     registeredFrom: {
-      type: DataTypes.ENUM("labour", "want_labour", "contractor", "contractor_customer"),
+      type: DataTypes.ENUM("labour", "owner", "contractor", "contractor_customer", "want_labour"),
       allowNull: true,
       defaultValue: "labour",
     },

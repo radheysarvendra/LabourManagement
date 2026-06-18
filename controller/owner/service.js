@@ -123,7 +123,7 @@ const createOwnerService = async (payload) => {
     registeredFrom,
   } = payload;
   const sessionUserType = normalizeOwnerRole(userType || role);
-  const resolvedRegisteredFrom = registeredFrom || sessionUserType || "want_labour";
+  const resolvedRegisteredFrom = registeredFrom || sessionUserType || "owner";
 
   if (!name || !phone || !workType) {
     return {
