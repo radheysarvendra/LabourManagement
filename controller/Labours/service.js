@@ -564,9 +564,12 @@ const searchLaboursService = async ({
   verificationStatus,
   page = 1,
   limit = 4,
+  showAll = false,
 }) => {
   const pageNumber = Math.max(Number(page) || 1, 1);
-  const pageLimit = Math.min(Math.max(Number(limit) || 4, 1), 20);
+  // Admin (showAll) gets up to 200; public search capped at 20
+  const maxLimit = showAll ? 200 : 20;
+  const pageLimit = Math.min(Math.max(Number(limit) || 4, 1), maxLimit);
   const offset = (pageNumber - 1) * pageLimit;
   const location = await resolveSearchLocation({
     stateId,
@@ -576,8 +579,9 @@ const searchLaboursService = async ({
     pincode,
     district,
   });
-  const where = { isAvailable: true };
-  const baseWhere = { isAvailable: true };
+  // Admin bypasses isAvailable filter to see all labours
+  const where = showAll ? {} : { isAvailable: true };
+  const baseWhere = showAll ? {} : { isAvailable: true };
   const verificationValue =
     String(verificationStatus || isVerified || "").toLowerCase().trim();
 

@@ -153,7 +153,7 @@ router.get("/api/admin/roles", verifyAdminToken, allowAdminModule("roles", "canV
 router.get("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canView"), roleController.getRoleById);
 router.put("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canUpdate"), roleController.updateRoleById);
 router.delete("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canDelete"), roleController.deleteRoleById);
-router.get("/api/admin/labours", verifyAdminToken, allowAdminModule("labours", "canView"), labourController.searchLabours);
+router.get("/api/admin/labours", verifyAdminToken, allowAdminModule("labours", "canView"), labourController.adminSearchLabours);
 router.get("/api/admin/labours/:id", verifyAdminToken, allowAdminModule("labours", "canView"), labourController.getLabourById);
 router.post("/api/admin/labours", verifyAdminToken, allowAdminModule("labours", "canCreate"), labourController.createLabour);
 router.put("/api/admin/labours/:id", verifyAdminToken, allowAdminModule("labours", "canUpdate"), labourController.updateLabourById);
