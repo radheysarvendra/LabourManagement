@@ -156,7 +156,7 @@ const findUsersByPhone = async (phone) => {
         users.push({ user: newOwner, userType: ROLE_TYPES.CONTRACTOR });
         users.push({ user: newOwner, userType: ROLE_TYPES.CONTRACTOR_CUSTOMER });
       } catch (e) {
-        // owner record may already exist (race condition) — ignore
+        console.warn("Cross-role owner auto-create skipped for phone", phone, ":", e.message);
       }
     }
   }

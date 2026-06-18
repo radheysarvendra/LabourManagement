@@ -69,66 +69,70 @@ const registerService = async (payload) => {
     return { statusCode: 409, body: { success: false, message: "Phone already registered hai. Login karein." } };
   }
 
-  // Create user in users table
-  const user = await User.create({
-    name,
-    phone: normalizedPhone,
-    registeredAs: role,
-    status: 1,
-  });
-
-  let profileRecord = null;
-
-  if (role === "labour") {
-    profileRecord = await Labour.create({
-      userId: user.id,
+  // Wrap in transaction — if profile creation fails, user row is rolled back
+  const { user, profileRecord } = await db.sequelize.transaction(async (t) => {
+    const newUser = await User.create({
       name,
       phone: normalizedPhone,
-      age: Number(age),
-      gender,
-      city: city || null,
-      state: state || null,
-      stateId: stateId || null,
-      district: district || null,
-      districtId: districtId || null,
-      pincode: pincode || null,
-      pincodeId: pincodeId || null,
-      postOffice: postOffice || null,
-      postOfficeId: postOfficeId || null,
-      area: area || null,
-      address: address || null,
-      isAvailable: true,
-      isVerified: false,
-      registeredFrom: "labour",
+      registeredAs: role,
       status: 1,
-    });
+    }, { transaction: t });
 
-    if (skills && skills.length > 0) {
-      await LabourSkill.bulkCreate(
-        skills.map((skillId) => ({ labourId: profileRecord.id, skillId: Number(skillId) })),
-        { ignoreDuplicates: true }
-      );
+    let newProfile = null;
+
+    if (role === "labour") {
+      newProfile = await Labour.create({
+        userId: newUser.id,
+        name,
+        phone: normalizedPhone,
+        age: Number(age),
+        gender,
+        city: city || null,
+        state: state || null,
+        stateId: stateId || null,
+        district: district || null,
+        districtId: districtId || null,
+        pincode: pincode || null,
+        pincodeId: pincodeId || null,
+        postOffice: postOffice || null,
+        postOfficeId: postOfficeId || null,
+        area: area || null,
+        address: address || null,
+        isAvailable: true,
+        isVerified: false,
+        registeredFrom: "labour",
+        status: 1,
+      }, { transaction: t });
+
+      if (skills && skills.length > 0) {
+        await LabourSkill.bulkCreate(
+          skills.map((skillId) => ({ labourId: newProfile.id, skillId: Number(skillId) })),
+          { transaction: t, ignoreDuplicates: true }
+        );
+      }
+    } else {
+      newProfile = await Owner.create({
+        userId: newUser.id,
+        name,
+        phone: normalizedPhone,
+        workType: workType || "both",
+        city: city || null,
+        state: state || null,
+        district: district || null,
+        pincode: pincode || null,
+        area: area || null,
+        postOffice: postOffice || null,
+        address: address || null,
+        age: age ? Number(age) : null,
+        gender: gender || null,
+        isActive: true,
+        registeredFrom: role,
+        status: 1,
+      }, { transaction: t });
     }
-  } else {
-    profileRecord = await Owner.create({
-      userId: user.id,
-      name,
-      phone: normalizedPhone,
-      workType: workType || "both",
-      city: city || null,
-      state: state || null,
-      district: district || null,
-      pincode: pincode || null,
-      area: area || null,
-      postOffice: postOffice || null,
-      address: address || null,
-      age: age ? Number(age) : null,
-      gender: gender || null,
-      isActive: true,
-      registeredFrom: role,
-      status: 1,
-    });
-  }
+
+    return { user: newUser, profileRecord: newProfile };
+  });
 
   const token = generateToken(profileRecord, role);
   await saveToken(profileRecord, token, role);
