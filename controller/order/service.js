@@ -5,6 +5,7 @@ const Order = db.order;
 const OrderMapping = db.orderMapping;
 const Labour = db.labour;
 const Owner = db.owner;
+const User = db.user;
 const Skill = db.skill;
 const Category = db.category;
 const WorkAssignment = db.workAssignment;
@@ -23,17 +24,46 @@ const orderInclude = [
   },
 ];
 
-// Batch-fetch user name/phone from Labour or Owner table for new-flow orders
-// (ownerId=null, userId set) where Sequelize JOIN via ownerId returns null.
+// Resolve owner name/phone for new-flow orders (ownerId=null, userId set).
+// Strategy:
+//   1. Find labours/owners by their own id (orderMappings.userId stores labour.id or owner.id)
+//   2. Each labour/owner has a userId FK pointing to the users table (set by new registration)
+//   3. Prefer name from users table — single source of truth — fallback to labours/owners name
 const resolveUserIds = async (userIds) => {
   if (!userIds || userIds.length === 0) return {};
+
   const [labours, owners] = await Promise.all([
-    Labour.findAll({ where: { id: userIds }, attributes: ["id", "name", "phone"] }),
-    Owner.findAll({ where: { id: userIds }, attributes: ["id", "name", "phone"] }),
+    Labour.findAll({ where: { id: userIds }, attributes: ["id", "name", "phone", "userId"] }),
+    Owner.findAll({ where: { id: userIds }, attributes: ["id", "name", "phone", "userId"] }),
   ]);
+
+  // Collect globalUserIds (users table ids) from both tables
+  const globalUserIds = [
+    ...labours.map((l) => l.userId),
+    ...owners.map((o) => o.userId),
+  ].filter(Boolean);
+
+  // Fetch from users table in one shot
+  const usersMap = {};
+  if (globalUserIds.length > 0 && User) {
+    const userRecords = await User.findAll({
+      where: { id: [...new Set(globalUserIds)] },
+      attributes: ["id", "name", "phone"],
+    });
+    userRecords.forEach((u) => { usersMap[u.id] = u; });
+  }
+
   const map = {};
-  labours.forEach((l) => { map[l.id] = { id: l.id, name: l.name, phone: l.phone }; });
-  owners.forEach((o) => { if (!map[o.id]) map[o.id] = { id: o.id, name: o.name, phone: o.phone }; });
+  labours.forEach((l) => {
+    const u = l.userId ? usersMap[l.userId] : null;
+    map[l.id] = { id: l.id, name: u?.name || l.name, phone: u?.phone || l.phone };
+  });
+  owners.forEach((o) => {
+    if (!map[o.id]) {
+      const u = o.userId ? usersMap[o.userId] : null;
+      map[o.id] = { id: o.id, name: u?.name || o.name, phone: u?.phone || o.phone };
+    }
+  });
   return map;
 };
 
