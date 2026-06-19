@@ -11,11 +11,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
-    labourCode: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      unique: true,
-    },
     name: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -25,58 +20,10 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       unique: true,
     },
-    status: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      defaultValue: 1,
-    },
-    city: {
+    labourCode: {
       type: DataTypes.STRING,
       allowNull: true,
-    },
-    village: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    stateId: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-    districtId: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-    pincodeId: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-    postOfficeId: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-    district: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    state: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    pincode: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    area: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    postOffice: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    address: {
-      type: DataTypes.TEXT,
-      allowNull: true,
+      unique: true,
     },
     isAvailable: {
       type: DataTypes.BOOLEAN,
@@ -87,26 +34,19 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: false,
     },
-    profileImage: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
     experienceYears: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
     },
-    age: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    gender: {
-      type: DataTypes.ENUM("male", "female"),
-      allowNull: false,
-    },
     registeredFrom: {
-      type: DataTypes.ENUM("labour", "owner", "contractor", "contractor_customer", "want_labour"),
+      type: DataTypes.STRING,
       allowNull: true,
       defaultValue: "labour",
+    },
+    status: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
     },
     createdById: {
       type: DataTypes.INTEGER,

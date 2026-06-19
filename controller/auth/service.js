@@ -25,6 +25,8 @@ const registerService = async (payload) => {
     postOffice,
     address,
     workType,
+    categoryId,
+    skillId,
     stateId,
     districtId,
     pincodeId,
@@ -32,12 +34,12 @@ const registerService = async (payload) => {
   } = payload;
 
   if (!name || !phone || !role) {
-    return { statusCode: 400, body: { success: false, message: "name, phone aur role required hai" } };
+    return { statusCode: 400, body: { success: false, message: "Name, phone number, and role are required" } };
   }
 
   const normalizedPhone = String(phone).replace(/[^0-9]/g, "").trim();
   if (normalizedPhone.length !== 10) {
-    return { statusCode: 400, body: { success: false, message: "10 digit mobile number required" } };
+    return { statusCode: 400, body: { success: false, message: "Enter a 10-digit mobile number" } };
   }
 
   if (!VALID_ROLES.includes(role)) {
@@ -46,17 +48,17 @@ const registerService = async (payload) => {
 
   if (role === "labour") {
     if (!age || !gender) {
-      return { statusCode: 400, body: { success: false, message: "Labour registration ke liye age aur gender required hai" } };
+      return { statusCode: 400, body: { success: false, message: "Age and gender are required for worker registration" } };
     }
     if (!skills || !Array.isArray(skills) || skills.length === 0) {
-      return { statusCode: 400, body: { success: false, message: "Labour registration ke liye kam se kam ek skill required hai" } };
+      return { statusCode: 400, body: { success: false, message: "Select at least one worker skill" } };
     }
   }
 
   // Check if phone already exists in users table
   const existingUser = await User.findOne({ where: { phone: normalizedPhone } });
   if (existingUser) {
-    return { statusCode: 409, body: { success: false, message: "Phone already registered hai. Login karein." } };
+    return { statusCode: 409, body: { success: false, message: "Phone already registered. Please log in." } };
   }
 
   // Also check labours and owners for backward compat
@@ -66,7 +68,7 @@ const registerService = async (payload) => {
   ]);
 
   if (existingLabour || existingOwner) {
-    return { statusCode: 409, body: { success: false, message: "Phone already registered hai. Login karein." } };
+    return { statusCode: 409, body: { success: false, message: "Phone already registered. Please log in." } };
   }
 
   // Wrap in transaction — if profile creation fails, user row is rolled back
@@ -76,6 +78,19 @@ const registerService = async (payload) => {
       phone: normalizedPhone,
       registeredAs: role,
       status: 1,
+      age: age ? Number(age) : null,
+      gender: gender || null,
+      city: city || null,
+      state: state || null,
+      stateId: stateId || null,
+      district: district || null,
+      districtId: districtId || null,
+      pincode: pincode || null,
+      pincodeId: pincodeId || null,
+      postOffice: postOffice || null,
+      postOfficeId: postOfficeId || null,
+      area: area || null,
+      address: address || null,
     }, { transaction: t });
 
     let newProfile = null;
@@ -85,19 +100,6 @@ const registerService = async (payload) => {
         userId: newUser.id,
         name,
         phone: normalizedPhone,
-        age: Number(age),
-        gender,
-        city: city || null,
-        state: state || null,
-        stateId: stateId || null,
-        district: district || null,
-        districtId: districtId || null,
-        pincode: pincode || null,
-        pincodeId: pincodeId || null,
-        postOffice: postOffice || null,
-        postOfficeId: postOfficeId || null,
-        area: area || null,
-        address: address || null,
         isAvailable: true,
         isVerified: false,
         registeredFrom: "labour",
@@ -116,15 +118,8 @@ const registerService = async (payload) => {
         name,
         phone: normalizedPhone,
         workType: workType || "both",
-        city: city || null,
-        state: state || null,
-        district: district || null,
-        pincode: pincode || null,
-        area: area || null,
-        postOffice: postOffice || null,
-        address: address || null,
-        age: age ? Number(age) : null,
-        gender: gender || null,
+        categoryId: categoryId || null,
+        skillId: skillId || null,
         isActive: true,
         registeredFrom: role,
         status: 1,
@@ -163,7 +158,7 @@ const registerService = async (payload) => {
 };
 
 // Called when a labour user wants to use owner role for the first time
-const completeOwnerProfileService = async ({ userId, userType, workType, city, state, district, pincode, area, postOffice, address }) => {
+const completeOwnerProfileService = async ({ userId, userType, workType, categoryId, skillId, city, state, district, pincode, area, postOffice, address }) => {
   const profileRecord = userType === "labour"
     ? await Labour.findOne({ where: { id: userId } })
     : await Owner.findOne({ where: { id: userId } });
@@ -182,15 +177,8 @@ const completeOwnerProfileService = async ({ userId, userType, workType, city, s
     name: profileRecord.name,
     phone: profileRecord.phone,
     workType: workType || "both",
-    city: city || profileRecord.city || null,
-    state: state || profileRecord.state || null,
-    district: district || profileRecord.district || null,
-    pincode: pincode || profileRecord.pincode || null,
-    area: area || profileRecord.area || null,
-    postOffice: postOffice || profileRecord.postOffice || null,
-    address: address || profileRecord.address || null,
-    age: profileRecord.age || null,
-    gender: profileRecord.gender || null,
+    categoryId: categoryId || null,
+    skillId: skillId || null,
     isActive: true,
     registeredFrom: "owner",
     status: 1,
@@ -205,10 +193,10 @@ const completeOwnerProfileService = async ({ userId, userType, workType, city, s
 // Called when an owner user wants to use labour role for the first time
 const completeLabourProfileService = async ({ userId, userType, skills, age, gender, city, state, district, pincode, area, postOffice, address, stateId, districtId, pincodeId, postOfficeId }) => {
   if (!age || !gender) {
-    return { statusCode: 400, body: { success: false, message: "age aur gender required hai" } };
+    return { statusCode: 400, body: { success: false, message: "Age and gender are required" } };
   }
   if (!skills || !Array.isArray(skills) || skills.length === 0) {
-    return { statusCode: 400, body: { success: false, message: "Kam se kam ek skill required hai" } };
+    return { statusCode: 400, body: { success: false, message: "Select at least one worker skill" } };
   }
 
   const profileRecord = userType === "owner" || userType === "contractor" || userType === "contractor_customer"
@@ -224,23 +212,31 @@ const completeLabourProfileService = async ({ userId, userType, skills, age, gen
     return { statusCode: 200, body: { success: true, message: "Labour profile already exists", profile: existing } };
   }
 
+  // Update users table with labour-specific personal data (age, gender, location)
+  if (profileRecord.userId) {
+    const userUpdateData = {};
+    if (age) userUpdateData.age = Number(age);
+    if (gender) userUpdateData.gender = gender;
+    if (city) userUpdateData.city = city;
+    if (state) userUpdateData.state = state;
+    if (stateId) userUpdateData.stateId = stateId;
+    if (district) userUpdateData.district = district;
+    if (districtId) userUpdateData.districtId = districtId;
+    if (pincode) userUpdateData.pincode = pincode;
+    if (pincodeId) userUpdateData.pincodeId = pincodeId;
+    if (postOffice) userUpdateData.postOffice = postOffice;
+    if (postOfficeId) userUpdateData.postOfficeId = postOfficeId;
+    if (area) userUpdateData.area = area;
+    if (address) userUpdateData.address = address;
+    if (Object.keys(userUpdateData).length > 0) {
+      await db.user.update(userUpdateData, { where: { id: profileRecord.userId } });
+    }
+  }
+
   const newLabour = await Labour.create({
     userId: profileRecord.userId || null,
     name: profileRecord.name,
     phone: profileRecord.phone,
-    age: Number(age),
-    gender,
-    city: city || profileRecord.city || null,
-    state: state || profileRecord.state || null,
-    stateId: stateId || null,
-    district: district || profileRecord.district || null,
-    districtId: districtId || null,
-    pincode: pincode || profileRecord.pincode || null,
-    pincodeId: pincodeId || null,
-    postOffice: postOffice || profileRecord.postOffice || null,
-    postOfficeId: postOfficeId || null,
-    area: area || profileRecord.area || null,
-    address: address || profileRecord.address || null,
     isAvailable: true,
     isVerified: false,
     registeredFrom: "labour",

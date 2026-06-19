@@ -63,7 +63,7 @@ const createCategoryService = async (payload) => {
   const name = normalizeText(payload.name);
 
   if (!name) {
-    return { statusCode: 400, body: { success: false, message: "Category name required hai" } };
+    return { statusCode: 400, body: { success: false, message: "Category name is required" } };
   }
 
   const [data, created] = await db.category.findOrCreate({
@@ -130,7 +130,7 @@ const createSkillService = async (payload) => {
   const skillName = normalizeText(payload.skillName || payload.name);
 
   if (!skillName) {
-    return { statusCode: 400, body: { success: false, message: "Skill name required hai" } };
+    return { statusCode: 400, body: { success: false, message: "Skill name is required" } };
   }
 
   const [data, created] = await db.skill.findOrCreate({

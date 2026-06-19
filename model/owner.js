@@ -1,4 +1,4 @@
-module.exports = (sequelize, DataTypes) => {  // FIX: DataTypes bhi receive karo
+module.exports = (sequelize, DataTypes) => {
   const Owner = sequelize.define("ownersx", {
     id: {
       type: DataTypes.INTEGER,
@@ -20,57 +20,17 @@ module.exports = (sequelize, DataTypes) => {  // FIX: DataTypes bhi receive karo
       allowNull: false,
       unique: true,
     },
-    status: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      defaultValue: 1,
-    },
     workType: {
       type: DataTypes.ENUM("home_repair", "construction", "both"),
       allowNull: false,
+      defaultValue: "both",
     },
-    city: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    village: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    district: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    state: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    pincode: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    area: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    postOffice: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    address: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-    age: {
+    categoryId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
-    gender: {
-      type: DataTypes.ENUM("male", "female"),
-      allowNull: true,
-    },
-    profileImage: {
-      type: DataTypes.STRING,
+    skillId: {
+      type: DataTypes.INTEGER,
       allowNull: true,
     },
     isActive: {
@@ -78,9 +38,14 @@ module.exports = (sequelize, DataTypes) => {  // FIX: DataTypes bhi receive karo
       defaultValue: true,
     },
     registeredFrom: {
-      type: DataTypes.ENUM("labour", "owner", "contractor", "contractor_customer", "want_labour"),
+      type: DataTypes.STRING,
       allowNull: true,
       defaultValue: "owner",
+    },
+    status: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
     },
     createdById: {
       type: DataTypes.INTEGER,
@@ -91,7 +56,7 @@ module.exports = (sequelize, DataTypes) => {  // FIX: DataTypes bhi receive karo
       allowNull: true,
     },
   }, {
-    tableName: "owners",   // FIX: PostgreSQL table name exact match
+    tableName: "owners",
     timestamps: true,
   });
 

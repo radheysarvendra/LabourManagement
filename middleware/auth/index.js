@@ -11,6 +11,7 @@ const AuthOtp = db.authOtp;
 
 const TOKEN_SECRET = config.SECRET_KEY;
 const DEFAULT_TEST_OTP = process.env.DEFAULT_TEST_OTP || "1234";
+const EXPOSE_TEST_OTP = process.env.EXPOSE_TEST_OTP === "true" || process.env.NODE_ENV !== "production";
 const OTP_EXPIRY_MINUTES = Number(process.env.OTP_EXPIRY_MINUTES || 10);
 const ROLE_TYPES = {
   LABOUR: "labour",
@@ -139,15 +140,6 @@ const findUsersByPhone = async (phone) => {
           name: labour.name,
           phone,
           workType: "both",
-          city: labour.city || null,
-          state: labour.state || null,
-          district: labour.district || null,
-          pincode: labour.pincode || null,
-          area: labour.area || null,
-          postOffice: labour.postOffice || null,
-          address: labour.address || null,
-          age: labour.age || null,
-          gender: labour.gender || null,
           isActive: true,
           registeredFrom: "owner",
           status: 1,
@@ -212,7 +204,7 @@ const requestOtp = async (req, res) => {
     if (phone.length !== 10) {
       return res.status(400).send({
         success: false,
-        message: "10 digit mobile number required",
+        message: "Enter a 10-digit mobile number",
       });
     }
 
@@ -227,7 +219,7 @@ const requestOtp = async (req, res) => {
         success: true,
         isRegistered: false,
         phone,
-        message: "User registered nahi hai. Pehle register karein.",
+        message: "User not registered. Please register first.",
       });
     }
 
@@ -247,7 +239,7 @@ const requestOtp = async (req, res) => {
       )
     );
 
-    return res.status(200).send({
+    const response = {
       success: true,
       message: "OTP sent successfully",
       userType: selectedUser.userType,
@@ -255,8 +247,13 @@ const requestOtp = async (req, res) => {
       roles: users.map((item) => item.userType),
       requiresRoleSelection: users.length > 1 && !requestedUserType,
       isRegistered: isProfileRegistered(selectedUser.user),
-      testOtp: DEFAULT_TEST_OTP,
-    });
+    };
+
+    if (EXPOSE_TEST_OTP) {
+      response.testOtp = DEFAULT_TEST_OTP;
+    }
+
+    return res.status(200).send(response);
   } catch (err) {
     return res.status(500).send({
       success: false,
@@ -274,7 +271,7 @@ const verifyOtp = async (req, res) => {
     if (phone.length !== 10 || !otp) {
       return res.status(400).send({
         success: false,
-        message: "phone aur otp required hai",
+        message: "Phone number and OTP are required",
       });
     }
 
@@ -308,21 +305,21 @@ const verifyOtp = async (req, res) => {
     if (!otpRecord) {
       return res.status(404).send({
         success: false,
-        message: "OTP not found. Please request OTP again.",
+        message: "OTP not found. Request a new OTP.",
       });
     }
 
     if (new Date(otpRecord.expiresAt).getTime() < Date.now()) {
       return res.status(400).send({
         success: false,
-        message: "OTP expired. Please request OTP again.",
+        message: "OTP expired. Request a new OTP.",
       });
     }
 
     if (otpRecord.attempts >= 5) {
       return res.status(429).send({
         success: false,
-        message: "Too many wrong attempts. Please request OTP again.",
+        message: "Too many attempts. Request a new OTP.",
       });
     }
 
@@ -365,40 +362,14 @@ const verifyOtp = async (req, res) => {
 // Login
 const login = async (req, res) => {
   try {
-    const { userType } = req.body;
-    const phone = normalizePhone(req.body.phone);
-
-    if (req.body.otp) {
-      return verifyOtp(req, res);
-    }
-
-    if (!phone || !userType) {
+    if (!req.body.otp) {
       return res.status(400).send({
         success: false,
-        message: "phone aur userType required hai",
+        message: "Request an OTP before logging in",
       });
     }
 
-    const user = await getUserForRole(userType, phone, true);
-
-    if (!user) {
-      return res.status(404).send({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    const token = generateToken(user, userType);
-    await saveToken(user, token, userType);
-
-    const registeredUsers = sortUsersByRolePriority(await findUsersByPhone(phone));
-
-    return res.status(200).send(buildAuthResponse({
-      token,
-      user,
-      userType,
-      roles: registeredUsers.map((item) => item.userType),
-    }));
+    return verifyOtp(req, res);
   } catch (err) {
     return res.status(500).send({
       success: false,
@@ -437,7 +408,7 @@ const verifyToken = async (req, res, next) => {
   } catch (err) {
     return res.status(401).send({
       success: false,
-      message: "Token expired or invalid",
+      message: "Session expired. Please log in again.",
     });
   }
 };
@@ -477,7 +448,7 @@ const checkPhone = async (req, res) => {
     if (phone.length !== 10) {
       return res.status(400).send({
         success: false,
-        message: "10 digit mobile number required",
+        message: "Enter a 10-digit mobile number",
       });
     }
 
@@ -488,7 +459,7 @@ const checkPhone = async (req, res) => {
         success: true,
         isRegistered: false,
         phone,
-        message: "User registered nahi hai. Registration required.",
+        message: "User not registered. Registration required.",
       });
     }
 
@@ -501,7 +472,7 @@ const checkPhone = async (req, res) => {
       userId: primary.user.id,
       registeredFrom: primary.user.registeredFrom || primary.userType,
       roles: users.map((item) => item.userType),
-      message: "User registered hai.",
+      message: "User is already registered",
     });
   } catch (err) {
     return res.status(500).send({ success: false, message: err.message });

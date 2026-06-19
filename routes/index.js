@@ -8,6 +8,7 @@ const addressController = require("../controller/address/index");
 const categoryController = require("../controller/category/index");
 const bookingController = require("../controller/booking/index");
 const orderController = require("../controller/order/index");
+const providerController = require("../controller/provider/index");
 const workAssignmentController = require("../controller/workAssignment/index");
 const authController = require("../middleware/auth/index");
 const newAuthController = require("../controller/auth/index");
@@ -72,17 +73,22 @@ router.get("/api/address/districts/:stateId", addressController.getDistricts);
 router.get("/api/address/pincode/:pincode", addressController.getPincodeDetails);
 router.post("/api/address/create", addressController.createAddress);
 router.get("/api/address/:entityType/:entityId", addressController.getAddressByEntity);
+// Category & skill reads are public; mutations require admin
 router.get("/api/categories", categoryController.getCategories);
-router.post("/api/categories", categoryController.createCategory);
-router.put("/api/categories/:id", categoryController.updateCategory);
-router.delete("/api/categories/:id", categoryController.deleteCategory);
+router.post("/api/categories", verifyAdminToken, categoryController.createCategory);
+router.put("/api/categories/:id", verifyAdminToken, categoryController.updateCategory);
+router.delete("/api/categories/:id", verifyAdminToken, categoryController.deleteCategory);
 router.get("/api/skills", categoryController.getSkills);
-router.post("/api/skills", categoryController.createSkill);
-router.put("/api/skills/:id", categoryController.updateSkill);
-router.delete("/api/skills/:id", categoryController.deleteSkill);
+router.post("/api/skills", verifyAdminToken, categoryController.createSkill);
+router.put("/api/skills/:id", verifyAdminToken, categoryController.updateSkill);
+router.delete("/api/skills/:id", verifyAdminToken, categoryController.deleteSkill);
 router.get("/api/categories/:categoryId/skills", categoryController.getCategorySkills);
-router.post("/api/categories/:categoryId/skills", categoryController.addSkillToCategory);
-router.delete("/api/categories/:categoryId/skills/:skillId", categoryController.removeSkillFromCategory);
+router.post("/api/categories/:categoryId/skills", verifyAdminToken, categoryController.addSkillToCategory);
+router.delete("/api/categories/:categoryId/skills/:skillId", verifyAdminToken, categoryController.removeSkillFromCategory);
+router.get("/api/providers/search", verifyToken, providerController.searchProviders);
+router.get("/api/providers/count", verifyToken, providerController.countProviders);
+router.get("/api/admin/providers/search", verifyAdminToken, providerController.searchProviders);
+router.get("/api/admin/providers/count", verifyAdminToken, providerController.countProviders);
 router.post("/api/bookings", verifyToken, bookingController.createBooking);
 router.get("/api/bookings", verifyToken, bookingController.getBookings);
 router.get("/api/bookings/:id", verifyToken, bookingController.getBookingById);
@@ -129,15 +135,15 @@ router.put("/api/work-assignments/:id/attendance/:attendanceId", verifyToken, wo
 router.post("/api/work-assignments/:id/payments/generate", verifyToken, workAssignmentController.generatePayment);
 router.get("/api/work-assignments/:id/payments", verifyToken, workAssignmentController.getPayments);
 router.put("/api/work-assignments/:id/payments/:paymentId/status", verifyToken, workAssignmentController.updatePaymentStatus);
-router.post("/createLabour", labourController.createLabour);
+router.post("/createLabour", verifyAdminToken, labourController.createLabour);
 router.get("/searchLabour", verifyToken, labourController.searchLabours);
-router.get("/getAllLabour", verifyToken, labourController.getAllLabours); 
+router.get("/getAllLabour", verifyToken, labourController.getAllLabours);
 router.get("/getLabourById/:id",verifyToken, labourController.getLabourById);
 router.put("/updateLabourById/:id", verifyToken, labourController.updateLabourById);
 
 
 // Owner routes
-router.post("/createOwner", ownerController.createOwner);
+router.post("/createOwner", verifyAdminToken, ownerController.createOwner);
 router.get("/getAllOwners", verifyToken, ownerController.getAllOwners);
 router.get("/getOwnerById/:id", verifyToken, ownerController.getOwnerById);
 router.put("/updateOwnerById/:id", verifyToken, ownerController.updateOwner);
@@ -193,11 +199,11 @@ router.post("/api/admin/work-assignments/:id/payments/generate", verifyAdminToke
 router.get("/api/admin/work-assignments/:id/payments", verifyAdminToken, allowAdminModule("payments", "canView"), workAssignmentController.getPayments);
 router.put("/api/admin/work-assignments/:id/payments/:paymentId/status", verifyAdminToken, allowAdminModule("payments", "canUpdate"), workAssignmentController.updatePaymentStatus);
 // Role routes
-router.post("/CreateRole", verifyToken, roleController.createRole);
-router.get("/GetAllRoles", verifyToken, roleController.getAllRoles);
-router.get("/getRoleById/:id", verifyToken, roleController.getRoleById);
-router.put("/updateRoleById/:id", verifyToken, roleController.updateRoleById);
-router.delete("/deleteRoleById/:id", verifyToken, roleController.deleteRoleById);
+router.post("/CreateRole", verifyAdminToken, allowAdminModule("roles", "canCreate"), roleController.createRole);
+router.get("/GetAllRoles", verifyAdminToken, allowAdminModule("roles", "canView"), roleController.getAllRoles);
+router.get("/getRoleById/:id", verifyAdminToken, allowAdminModule("roles", "canView"), roleController.getRoleById);
+router.put("/updateRoleById/:id", verifyAdminToken, allowAdminModule("roles", "canUpdate"), roleController.updateRoleById);
+router.delete("/deleteRoleById/:id", verifyAdminToken, allowAdminModule("roles", "canDelete"), roleController.deleteRoleById);
 
 module.exports = router;
 

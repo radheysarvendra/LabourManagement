@@ -100,7 +100,7 @@ const createAddressService = async (payload) => {
   const missing = required.find((field) => !payload[field]);
 
   if (missing) {
-    return { statusCode: 400, body: { success: false, message: `${missing} required hai` } };
+    return { statusCode: 400, body: { success: false, message: `${missing} is required` } };
   }
 
   const data = await db.address.create(payload);

@@ -96,6 +96,30 @@ db.labour.belongsTo(db.user, { foreignKey: "userId", as: "user" });
 db.user.hasOne(db.owner, { foreignKey: "userId", as: "ownerProfile" });
 db.owner.belongsTo(db.user, { foreignKey: "userId", as: "user" });
 
+db.owner.belongsTo(db.skill, {
+  foreignKey: "skillId",
+  otherKey: "id",
+  as: "skillDetail",
+});
+
+db.skill.hasMany(db.owner, {
+  foreignKey: "skillId",
+  sourceKey: "id",
+  as: "contractors",
+});
+
+db.owner.belongsTo(db.category, {
+  foreignKey: "categoryId",
+  otherKey: "id",
+  as: "categoryDetail",
+});
+
+db.category.hasMany(db.owner, {
+  foreignKey: "categoryId",
+  sourceKey: "id",
+  as: "contractors",
+});
+
 // NOTE - labour skills map
 db.labour.hasMany(db.labourSkill, {
   foreignKey: "labourId",

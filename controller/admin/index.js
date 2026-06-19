@@ -144,17 +144,17 @@ const loginAdmin = async (req, res) => {
     const password = req.body.password;
 
     if (!email || !password) {
-      return res.status(400).send({ success: false, message: "email and password required" });
+      return res.status(400).send({ success: false, message: "Email and password are required" });
     }
 
     const admin = await Admin.findOne({ where: { email } });
 
     if (!admin || !verifyPassword(password, admin.passwordHash)) {
-      return res.status(401).send({ success: false, message: "Invalid admin email or password" });
+      return res.status(401).send({ success: false, message: "Invalid email or password" });
     }
 
     if (admin.status !== "active") {
-      return res.status(403).send({ success: false, message: "Admin account is not active" });
+      return res.status(403).send({ success: false, message: "Admin account is inactive" });
     }
 
     await admin.update({ lastLoginAt: new Date() });
@@ -179,7 +179,7 @@ const createAdmin = async (req, res) => {
     const password = req.body.password || DEFAULT_ADMIN_PASSWORD;
 
     if (!name || !email || !roleId) {
-      return res.status(400).send({ success: false, message: "name, email and roleId required" });
+      return res.status(400).send({ success: false, message: "Name, email, and role are required" });
     }
 
     const role = await Role.findOne({ where: { id: roleId } });
@@ -191,7 +191,7 @@ const createAdmin = async (req, res) => {
     const existing = await Admin.findOne({ where: { email } });
 
     if (existing) {
-      return res.status(400).send({ success: false, message: "Admin email already exists" });
+      return res.status(400).send({ success: false, message: "An admin with this email already exists" });
     }
 
     const admin = await Admin.create({
@@ -208,7 +208,7 @@ const createAdmin = async (req, res) => {
 
     return res.status(201).send({
       success: true,
-      message: "Admin created successfully",
+      message: "Admin account created successfully",
       data,
       defaultPasswordUsed: !req.body.password,
     });
@@ -258,7 +258,7 @@ const createPermission = async (req, res) => {
     const { roleId, moduleName, canView, canCreate, canUpdate, canDelete, canApprove } = req.body;
 
     if (!roleId || !moduleName) {
-      return res.status(400).send({ success: false, message: "roleId and moduleName required" });
+      return res.status(400).send({ success: false, message: "Role and module are required" });
     }
 
     const [data] = await AdminPermission.upsert({
@@ -273,7 +273,7 @@ const createPermission = async (req, res) => {
 
     return res.status(201).send({
       success: true,
-      message: "Permission saved successfully",
+      message: "Permission updated successfully",
       data,
     });
   } catch (err) {

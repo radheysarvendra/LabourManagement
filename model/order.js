@@ -41,6 +41,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: "labour",
     },
+    assignedType: {
+      type: DataTypes.ENUM("labour", "contractor"),
+      allowNull: true,
+      defaultValue: null,
+    },
     stateId: {
       type: DataTypes.INTEGER,
       allowNull: true,

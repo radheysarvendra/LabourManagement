@@ -68,6 +68,40 @@ const normalizeAssignmentLabours = (labours = [], defaultSkill = null) => {
     .filter(Boolean);
 };
 
+const resolveOwnerIdFromOrderMapping = async (ownerMapping, transaction) => {
+  if (!ownerMapping) return null;
+  if (ownerMapping.ownerId) return ownerMapping.ownerId;
+  if (!ownerMapping.userId) return null;
+
+  const ownerById = await Owner.findOne({
+    where: { id: ownerMapping.userId },
+    attributes: ["id"],
+    transaction,
+  });
+
+  if (ownerById) return ownerById.id;
+
+  const ownerByUserId = await Owner.findOne({
+    where: { userId: ownerMapping.userId },
+    attributes: ["id"],
+    transaction,
+  });
+
+  return ownerByUserId?.id || null;
+};
+
+const mapAssignment = (assignment) => {
+  const json = assignment.toJSON ? assignment.toJSON() : assignment;
+  const order = json.order || {};
+
+  return {
+    ...json,
+    ownerName: json.owner?.name || order.ownerName || null,
+    ownerPhone: json.owner?.phone || order.ownerPhone || null,
+    labourCount: Array.isArray(json.assignmentLabours) ? json.assignmentLabours.length : 0,
+  };
+};
+
 const syncAssignmentLabours = async (
   workAssignmentId,
   labours,
@@ -111,7 +145,7 @@ const getAssignmentByIdService = async (id) => {
 
   return {
     statusCode: 200,
-    body: { success: true, data },
+    body: { success: true, data: mapAssignment(data) },
   };
 };
 
@@ -130,7 +164,7 @@ const updateWorkAssignmentService = async (id, payload) => {
   if (payload.status && !allowedStatus.includes(payload.status)) {
     return {
       statusCode: 400,
-      body: { success: false, message: "Invalid work assignment status" },
+      body: { success: false, message: "Invalid assignment status" },
     };
   }
 
@@ -182,7 +216,12 @@ const createWorkAssignmentService = async (payload, options = {}) => {
     labours = [],
   } = payload;
 
-  const order = orderId ? await Order.findOne({ where: { id: orderId } }) : null;
+  const order = orderId
+    ? await Order.findOne({
+        where: { id: orderId },
+        include: [{ model: OrderMapping, as: "mappings", required: false }],
+      })
+    : null;
 
   if (orderId && !order) {
     return {
@@ -192,10 +231,15 @@ const createWorkAssignmentService = async (payload, options = {}) => {
   }
 
   const createAssignment = async (transaction) => {
+    const ownerMapping = order
+      ? (order.mappings || []).find((item) => item.userType === "owner")
+      : null;
+    const resolvedOwnerId = ownerId || await resolveOwnerIdFromOrderMapping(ownerMapping, transaction);
+
     const created = await WorkAssignment.create({
       assignmentCode: await generateAssignmentCode(),
       orderId: orderId || null,
-      ownerId: ownerId || null,
+      ownerId: resolvedOwnerId || null,
       middlemanId: middlemanId || null,
       fromDate: fromDate || order?.requiredDate || null,
       toDate: toDate || fromDate || order?.requiredDate || null,
@@ -253,6 +297,7 @@ const createAssignmentFromOrderService = async (orderId, options = {}) => {
   });
 
   const ownerMapping = (order.mappings || []).find((item) => item.userType === "owner");
+  const resolvedOwnerId = await resolveOwnerIdFromOrderMapping(ownerMapping, options.transaction);
   const labourMappings = (order.mappings || []).filter(
     (item) => item.userType === "labour" && item.labourId
   );
@@ -268,6 +313,7 @@ const createAssignmentFromOrderService = async (orderId, options = {}) => {
   if (existing) {
     const updateAssignment = async (transaction) => {
       await existing.update({
+        ownerId: existing.ownerId || resolvedOwnerId || null,
         middlemanId: options.middlemanId ?? existing.middlemanId,
         fromDate: options.fromDate || existing.fromDate || order.requiredDate,
         toDate: options.toDate || existing.toDate || options.fromDate || order.requiredDate,
@@ -305,7 +351,7 @@ const createAssignmentFromOrderService = async (orderId, options = {}) => {
 
   return createWorkAssignmentService({
     orderId: order.id,
-    ownerId: ownerMapping?.ownerId || null,
+    ownerId: resolvedOwnerId || null,
     middlemanId: options.middlemanId || null,
     fromDate: options.fromDate || order.requiredDate,
     toDate: options.toDate || order.requiredDate,
@@ -362,13 +408,7 @@ const getWorkAssignmentsService = async ({
       page: pageNumber,
       limit: pageLimit,
       totalPages: Math.ceil(result.count / pageLimit),
-      data: result.rows.map((row) => {
-        const json = row.toJSON ? row.toJSON() : row;
-        return {
-          ...json,
-          labourCount: Array.isArray(json.assignmentLabours) ? json.assignmentLabours.length : 0,
-        };
-      }),
+      data: result.rows.map(mapAssignment),
     },
   };
 };
@@ -379,7 +419,7 @@ const addLabourToAssignmentService = async (workAssignmentId, payload) => {
   if (!labourId) {
     return {
       statusCode: 400,
-      body: { success: false, message: "labourId required hai" },
+      body: { success: false, message: "Worker ID is required" },
     };
   }
 
@@ -496,7 +536,7 @@ const markAttendanceService = async (workAssignmentId, payload) => {
   if (!labourId || !attendanceDate) {
     return {
       statusCode: 400,
-      body: { success: false, message: "labourId aur attendanceDate required hai" },
+      body: { success: false, message: "Worker and attendance date are required" },
     };
   }
 
@@ -521,7 +561,7 @@ const markAttendanceService = async (workAssignmentId, payload) => {
   if (!assignmentLabour) {
     return {
       statusCode: 404,
-      body: { success: false, message: "Labour is not assigned to this work assignment" },
+      body: { success: false, message: "Worker is not assigned to this job" },
     };
   }
 
@@ -541,7 +581,7 @@ const markAttendanceService = async (workAssignmentId, payload) => {
     statusCode: 200,
     body: {
       success: true,
-      message: "Attendance marked successfully",
+      message: "Attendance recorded successfully",
       data,
     },
   };
@@ -632,7 +672,7 @@ const generatePaymentService = async (workAssignmentId, payload) => {
   if (!labourId || !fromDate || !toDate) {
     return {
       statusCode: 400,
-      body: { success: false, message: "labourId, fromDate aur toDate required hai" },
+      body: { success: false, message: "Worker and date range are required" },
     };
   }
 
@@ -643,7 +683,7 @@ const generatePaymentService = async (workAssignmentId, payload) => {
   if (!assignmentLabour) {
     return {
       statusCode: 404,
-      body: { success: false, message: "Labour is not assigned to this work assignment" },
+      body: { success: false, message: "Worker is not assigned to this job" },
     };
   }
 
