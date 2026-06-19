@@ -88,7 +88,7 @@ const createBookingService = async (payload) => {
       statusCode: 400,
       body: {
         success: false,
-        message: "Skill aur pincode required hai",
+        message: "Skill and PIN code are required",
       },
     };
   }
@@ -98,7 +98,7 @@ const createBookingService = async (payload) => {
       statusCode: 400,
       body: {
         success: false,
-        message: "Ek booking me 1 se 20 labour tak request kar sakte hain",
+        message: "You can request between 1 and 20 workers",
       },
     };
   }
@@ -123,7 +123,7 @@ const createBookingService = async (payload) => {
       statusCode: 409,
       body: {
         success: false,
-        message: `Aapko ${requiredCount} labour chahiye, lekin abhi ${availableCount} hi available hain`,
+        message: `${requiredCount} workers requested, but only ${availableCount} are available`,
         requiredCount,
         availableCount,
         data: matchedLabours,
@@ -166,7 +166,7 @@ const createBookingService = async (payload) => {
     statusCode: 201,
     body: {
       success: true,
-      message: "Booking request submitted. Admin approval pending.",
+      message: "Booking submitted and awaiting approval",
       requiredCount,
       allocatedCount: 0,
       data: mapBooking(createdData),

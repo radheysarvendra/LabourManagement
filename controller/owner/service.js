@@ -133,7 +133,7 @@ const createOwnerService = async (payload) => {
 
   const existingOwner = await Owner.findOne({ where: { phone } });
   if (existingOwner) {
-    return { statusCode: 409, body: { success: false, message: "Phone already registered. Please login with OTP.", isRegistered: true } };
+    return { statusCode: 409, body: { success: false, message: "Phone already registered. Log in using OTP.", isRegistered: true } };
   }
 
   const location = await getLocationData({ pincode, district, state, area, postOffice });

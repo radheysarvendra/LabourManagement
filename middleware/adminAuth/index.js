@@ -24,13 +24,13 @@ const verifyAdminToken = async (req, res, next) => {
     const token = extractTokenFromHeader(req.header("Authorization"));
 
     if (!token) {
-      return res.status(401).send({ success: false, message: "Admin token required" });
+      return res.status(401).send({ success: false, message: "Admin authentication required" });
     }
 
     const decoded = jwt.verify(token, TOKEN_SECRET);
 
     if (decoded.userType !== "admin") {
-      return res.status(403).send({ success: false, message: "Admin access only" });
+      return res.status(403).send({ success: false, message: "Admin access required" });
     }
 
     const admin = await Admin.findOne({
@@ -43,14 +43,14 @@ const verifyAdminToken = async (req, res, next) => {
     });
 
     if (!admin) {
-      return res.status(401).send({ success: false, message: "Admin not found or inactive" });
+      return res.status(401).send({ success: false, message: "Admin account not found or inactive" });
     }
 
     req.admin = admin;
     req.adminToken = decoded;
     next();
   } catch (err) {
-    return res.status(401).send({ success: false, message: "Admin token expired or invalid" });
+    return res.status(401).send({ success: false, message: "Admin session expired. Log in again." });
   }
 };
 

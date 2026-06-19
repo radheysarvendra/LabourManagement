@@ -104,6 +104,7 @@ const ensureSchema = async (db) => {
     address: textColumn,
     requiredDate: { type: db.Sequelize.DATEONLY, allowNull: true },
     needType: { type: db.Sequelize.ENUM("labour", "contractor"), allowNull: false, defaultValue: "labour" },
+    assignedType: { type: db.Sequelize.ENUM("labour", "contractor"), allowNull: true },
     ownerName: stringColumn,
     ownerPhone: stringColumn,
   };

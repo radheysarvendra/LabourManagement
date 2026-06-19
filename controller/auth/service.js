@@ -34,12 +34,12 @@ const registerService = async (payload) => {
   } = payload;
 
   if (!name || !phone || !role) {
-    return { statusCode: 400, body: { success: false, message: "name, phone aur role required hai" } };
+    return { statusCode: 400, body: { success: false, message: "Name, phone number, and role are required" } };
   }
 
   const normalizedPhone = String(phone).replace(/[^0-9]/g, "").trim();
   if (normalizedPhone.length !== 10) {
-    return { statusCode: 400, body: { success: false, message: "10 digit mobile number required" } };
+    return { statusCode: 400, body: { success: false, message: "Enter a 10-digit mobile number" } };
   }
 
   if (!VALID_ROLES.includes(role)) {
@@ -48,17 +48,17 @@ const registerService = async (payload) => {
 
   if (role === "labour") {
     if (!age || !gender) {
-      return { statusCode: 400, body: { success: false, message: "Labour registration ke liye age aur gender required hai" } };
+      return { statusCode: 400, body: { success: false, message: "Age and gender are required for worker registration" } };
     }
     if (!skills || !Array.isArray(skills) || skills.length === 0) {
-      return { statusCode: 400, body: { success: false, message: "Labour registration ke liye kam se kam ek skill required hai" } };
+      return { statusCode: 400, body: { success: false, message: "Select at least one worker skill" } };
     }
   }
 
   // Check if phone already exists in users table
   const existingUser = await User.findOne({ where: { phone: normalizedPhone } });
   if (existingUser) {
-    return { statusCode: 409, body: { success: false, message: "Phone already registered hai. Login karein." } };
+    return { statusCode: 409, body: { success: false, message: "Phone already registered. Please log in." } };
   }
 
   // Also check labours and owners for backward compat
@@ -68,7 +68,7 @@ const registerService = async (payload) => {
   ]);
 
   if (existingLabour || existingOwner) {
-    return { statusCode: 409, body: { success: false, message: "Phone already registered hai. Login karein." } };
+    return { statusCode: 409, body: { success: false, message: "Phone already registered. Please log in." } };
   }
 
   // Wrap in transaction — if profile creation fails, user row is rolled back
@@ -193,10 +193,10 @@ const completeOwnerProfileService = async ({ userId, userType, workType, categor
 // Called when an owner user wants to use labour role for the first time
 const completeLabourProfileService = async ({ userId, userType, skills, age, gender, city, state, district, pincode, area, postOffice, address, stateId, districtId, pincodeId, postOfficeId }) => {
   if (!age || !gender) {
-    return { statusCode: 400, body: { success: false, message: "age aur gender required hai" } };
+    return { statusCode: 400, body: { success: false, message: "Age and gender are required" } };
   }
   if (!skills || !Array.isArray(skills) || skills.length === 0) {
-    return { statusCode: 400, body: { success: false, message: "Kam se kam ek skill required hai" } };
+    return { statusCode: 400, body: { success: false, message: "Select at least one worker skill" } };
   }
 
   const profileRecord = userType === "owner" || userType === "contractor" || userType === "contractor_customer"

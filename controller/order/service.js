@@ -159,6 +159,7 @@ const mapOrder = (order, userMap = {}) => {
       : json.skill,
     skillName: json.skill,
     needType,
+    assignedType: json.assignedType || null,
     orderType: needType,
     bookingFor: needType,
     requestedProviderRole: needType,
@@ -198,21 +199,21 @@ const createOrderService = async (payload) => {
   if (!userId) {
     return {
       statusCode: 400,
-      body: { success: false, message: "userId required hai" },
+      body: { success: false, message: "User ID is required" },
     };
   }
 
   if ((!skill && !skillId) || !pincode) {
     return {
       statusCode: 400,
-      body: { success: false, message: "Skill aur pincode required hai" },
+      body: { success: false, message: "Skill and PIN code are required" },
     };
   }
 
   if (requiredCount < 1 || requiredCount > 50) {
     return {
       statusCode: 400,
-      body: { success: false, message: "Labour required count 1 se 50 ke beech hona chahiye" },
+      body: { success: false, message: "Worker count must be between 1 and 50" },
     };
   }
 
@@ -222,10 +223,12 @@ const createOrderService = async (payload) => {
 
   // Token ke userType se correct table mein dhundo (Labour ya Owner ID collision avoid karo)
   const isLabourUser = _userType === "labour";
+  const ownerRecord = !isLabourUser
+    ? await Owner.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] })
+    : null;
   const userRecord = isLabourUser
     ? await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] })
-    : (await Owner.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] }) ||
-       await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] }));
+    : (ownerRecord || await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] }));
   const ownerName = userRecord?.name || null;
   const ownerPhone = userRecord?.phone || null;
 
@@ -265,18 +268,6 @@ const createOrderService = async (payload) => {
     postOffice,
   });
 
-  if (!availability.ok) {
-    return {
-      statusCode: 404,
-      body: {
-        success: false,
-        message: availability.message,
-        providerType: availability.providerType,
-        matchedCount: availability.matchedCount,
-      },
-    };
-  }
-
   const order = await db.sequelize.transaction(async (transaction) => {
     const createdOrder = await Order.create({
       orderCode: await generateOrderCode(),
@@ -307,7 +298,7 @@ const createOrderService = async (payload) => {
     await OrderMapping.create({
       orderId: createdOrder.id,
       userId,
-      ownerId: null,
+      ownerId: ownerId || ownerRecord?.id || null,
       labourId: null,
       userType: "owner",
       skill: skillName,
@@ -333,7 +324,7 @@ const createOrderService = async (payload) => {
     statusCode: 201,
     body: {
       success: true,
-      message: "आपकी रिक्वेस्ट भेज दी गई है। Admin approval ke baad booking confirm hogi.",
+      message: "Order submitted and awaiting admin approval",
       requiredCount,
       allocatedCount: 0,
       matchedCount: availability.matchedCount,
@@ -489,16 +480,19 @@ const updateOrderAdminStatusService = async (id, payload) => {
     };
   }
 
-  const isContractorOrder = order.needType === "contractor";
   const ownerMapping = await OrderMapping.findOne({
     where: { orderId: id, userType: "owner" },
   });
 
-  const selectedLabours = isContractorOrder ? [] : normalizeSelectedLabours(payload, order.skill);
-  const hasManualLabourSelection =
-    !isContractorOrder && (Array.isArray(payload.labours) || Array.isArray(payload.labourIds));
+  // Admin can assign labours OR contractors regardless of what was originally requested (needType).
+  // assignedType in payload tells us what admin is actually fulfilling the order with.
+  const assigningLabours = Array.isArray(payload.labours) || Array.isArray(payload.labourIds);
+  const assigningContractors = Array.isArray(payload.contractorIds) || payload.contractorId != null;
 
-  const selectedContractorIds = isContractorOrder
+  const selectedLabours = assigningLabours ? normalizeSelectedLabours(payload, order.skill) : [];
+  const hasManualLabourSelection = assigningLabours;
+
+  const selectedContractorIds = assigningContractors
     ? [
         ...(Array.isArray(payload.contractorIds) ? payload.contractorIds : []),
         ...(payload.contractorId ? [payload.contractorId] : []),
@@ -506,8 +500,11 @@ const updateOrderAdminStatusService = async (id, payload) => {
         .map((value) => Number(value))
         .filter((value, index, arr) => value && arr.indexOf(value) === index)
     : [];
-  const hasManualContractorSelection =
-    isContractorOrder && (Array.isArray(payload.contractorIds) || payload.contractorId != null);
+  const hasManualContractorSelection = assigningContractors;
+
+  // Determine what type is actually being assigned at approval time
+  const effectiveAssignedType = payload.assignedType
+    || (assigningContractors ? "contractor" : assigningLabours ? "labour" : order.needType);
 
   const allocatedCount = hasManualLabourSelection
     ? selectedLabours.length
@@ -515,12 +512,12 @@ const updateOrderAdminStatusService = async (id, payload) => {
       ? selectedContractorIds.length
       : order.labourAllocated;
 
-  if (!isContractorOrder && selectedLabours.length > Number(order.labourRequired)) {
+  if (selectedLabours.length > Number(order.labourRequired)) {
     return {
       statusCode: 400,
       body: {
         success: false,
-        message: "Assigned labour count owner requirement se zyada nahi ho sakta",
+        message: "Assigned workers cannot exceed the requested count",
       },
     };
   }
@@ -533,7 +530,7 @@ const updateOrderAdminStatusService = async (id, payload) => {
     if (foundLabours.length !== selectedLabours.length) {
       return {
         statusCode: 404,
-        body: { success: false, message: "One or more selected labours not found" },
+        body: { success: false, message: "Some selected workers were not found" },
       };
     }
   }
@@ -546,16 +543,9 @@ const updateOrderAdminStatusService = async (id, payload) => {
     if (foundContractors.length !== selectedContractorIds.length) {
       return {
         statusCode: 404,
-        body: { success: false, message: "One or more selected contractors not found" },
+        body: { success: false, message: "Some selected contractors were not found" },
       };
     }
-  }
-
-  if (adminStatus === "approved" && isContractorOrder && selectedContractorIds.length < 1) {
-    return {
-      statusCode: 400,
-      body: { success: false, message: "Approval ke liye contractorIds required hain" },
-    };
   }
 
   let createdWorkAssignmentId = null;
@@ -563,6 +553,7 @@ const updateOrderAdminStatusService = async (id, payload) => {
   await db.sequelize.transaction(async (transaction) => {
     await order.update({
       adminStatus,
+      assignedType: adminStatus === "approved" ? effectiveAssignedType : order.assignedType,
       labourAllocated: adminStatus === "approved" ? allocatedCount : order.labourAllocated,
       status: adminStatus === "approved" ? "assigned" : order.status,
     }, { transaction });
@@ -605,7 +596,7 @@ const updateOrderAdminStatusService = async (id, payload) => {
       })), { transaction });
     }
 
-    if (adminStatus === "approved" && !isContractorOrder) {
+    if (adminStatus === "approved" && effectiveAssignedType === "labour") {
       const assignmentResult = await workAssignmentService.createAssignmentFromOrderService(id, {
         middlemanId: middlemanId || staffId || null,
         fromDate,

@@ -1,6 +1,5 @@
 const { Op } = require("sequelize");
 const db = require("../../model/index.js");
-const { generateToken, saveToken } = require("../../middleware/auth/index");
 const msg = require("../../constants/Messages");
 const { getPincodeDetails } = require("../../utils/indiaPost");
 
@@ -322,8 +321,6 @@ const createLabourService = async (payload) => {
     await createLabourSkillRows({ labourId: data.id, skills: skillList, skillWages, experienceYears });
   }
 
-  const token = generateToken(data, "labour");
-  await saveToken(data, token, "labour");
   const createdLabour = await Labour.findOne({ where: { id: data.id }, include: labourInclude });
   const mappedLabour = mapLabourWithSkills(createdLabour);
 
@@ -332,7 +329,6 @@ const createLabourService = async (payload) => {
     body: {
       success: true,
       message: msg.LABOUR_CREATED_SUCCESS,
-      token,
       data: mappedLabour,
       user: mappedLabour,
       profile: mappedLabour,
@@ -534,6 +530,7 @@ const searchLaboursService = async ({
     labourWhere.isVerified = false;
     baseLabourWhere.isVerified = false;
   }
+
 
   // Build location filter on users table
   const userLocationWhere = buildUserLocationWhere(location, { stateId, districtId, pincodeId, postOfficeId });
