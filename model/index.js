@@ -47,13 +47,11 @@ const connectDB = async () => {
     console.log("PostgreSQL Connected Successfully");
 
     if (shouldSyncDatabase) {
+      // Existing installations may not yet have columns referenced by model
+      // indexes. Bring the schema forward before Sequelize creates indexes.
+      await ensureSchema(db);
       await sequelize.sync({ alter: false, force: false });
-      try {
-        await ensureSchema(db);
-        console.log("Database models are ready");
-      } catch (schemaErr) {
-        console.warn("ensureSchema warning (non-fatal):", schemaErr.message);
-      }
+      console.log("Database models are ready");
     }
 
   } catch (error) {
@@ -88,6 +86,19 @@ db.workAssignment = require("./workAssignment")(sequelize, DataTypes);
 db.workAssignmentLabour = require("./workAssignmentLabour")(sequelize, DataTypes);
 db.workAttendance = require("./workAttendance")(sequelize, DataTypes);
 db.workPayment = require("./workPayment")(sequelize, DataTypes);
+
+// ── NEW MODELS ──────────────────────────────────────────────────────────────
+db.appRole = require("./appRole")(sequelize, DataTypes);
+db.userRole = require("./userRole")(sequelize, DataTypes);
+db.labourProfile = require("./labourProfile")(sequelize, DataTypes);
+db.contractorProfile = require("./contractorProfile")(sequelize, DataTypes);
+db.contractorSkill = require("./contractorSkill")(sequelize, DataTypes);
+db.contractorCategory = require("./contractorCategory")(sequelize, DataTypes);
+db.session = require("./session")(sequelize, DataTypes);
+db.orderAssignment = require("./orderAssignment")(sequelize, DataTypes);
+db.labourAssignmentDetail = require("./labourAssignmentDetail")(sequelize, DataTypes);
+db.contractorAssignmentDetail = require("./contractorAssignmentDetail")(sequelize, DataTypes);
+db.contractorMilestone = require("./contractorMilestone")(sequelize, DataTypes);
 
 // NOTE - users → labours/owners (unified identity)
 db.user.hasOne(db.labour, { foreignKey: "userId", as: "labourProfile" });
@@ -493,8 +504,68 @@ db.admin.hasMany(db.adminPermission, {
   sourceKey: "roleId",
   as: "permissions",
 });
+
+// ── NEW ASSOCIATIONS ─────────────────────────────────────────────────────────
+
+// user ↔ appRole via userRoles
+db.user.hasMany(db.userRole, { foreignKey: "userId", as: "userRoles", onDelete: "CASCADE" });
+db.userRole.belongsTo(db.user, { foreignKey: "userId", as: "user" });
+db.appRole.hasMany(db.userRole, { foreignKey: "roleId", as: "userRoles" });
+db.userRole.belongsTo(db.appRole, { foreignKey: "roleId", as: "appRole" });
+
+// user ↔ labourProfile
+db.user.hasOne(db.labourProfile, { foreignKey: "userId", as: "newLabourProfile", onDelete: "CASCADE" });
+db.labourProfile.belongsTo(db.user, { foreignKey: "userId", as: "user" });
+
+// user ↔ contractorProfile
+db.user.hasOne(db.contractorProfile, { foreignKey: "userId", as: "contractorProfile", onDelete: "CASCADE" });
+db.contractorProfile.belongsTo(db.user, { foreignKey: "userId", as: "user" });
+
+// labourProfile → labourSkills (new-flow via labourUserId)
+db.labourProfile.hasMany(db.labourSkill, { foreignKey: "labourUserId", as: "labourSkills", onDelete: "CASCADE" });
+db.labourSkill.belongsTo(db.labourProfile, { foreignKey: "labourUserId", as: "labourProfile" });
+
+// contractorProfile ↔ contractorSkills
+db.contractorProfile.hasMany(db.contractorSkill, { foreignKey: "contractorUserId", as: "contractorSkills", onDelete: "CASCADE" });
+db.contractorSkill.belongsTo(db.contractorProfile, { foreignKey: "contractorUserId", as: "contractorProfile" });
+db.skill.hasMany(db.contractorSkill, { foreignKey: "skillId", as: "contractorSkills" });
+db.contractorSkill.belongsTo(db.skill, { foreignKey: "skillId", as: "skill" });
+
+// contractorProfile ↔ contractorCategories
+db.contractorProfile.hasMany(db.contractorCategory, { foreignKey: "contractorUserId", as: "contractorCategories", onDelete: "CASCADE" });
+db.contractorCategory.belongsTo(db.contractorProfile, { foreignKey: "contractorUserId", as: "contractorProfile" });
+db.category.hasMany(db.contractorCategory, { foreignKey: "categoryId", as: "contractorCategories" });
+db.contractorCategory.belongsTo(db.category, { foreignKey: "categoryId", as: "category" });
+
+// user ↔ sessions
+db.user.hasMany(db.session, { foreignKey: "userId", as: "sessions", onDelete: "CASCADE" });
+db.session.belongsTo(db.user, { foreignKey: "userId", as: "user" });
+db.appRole.hasMany(db.session, { foreignKey: "activeRoleId", as: "sessions" });
+db.session.belongsTo(db.appRole, { foreignKey: "activeRoleId", as: "activeRole" });
+
+// order ↔ orderAssignments
+db.order.hasMany(db.orderAssignment, { foreignKey: "orderId", as: "orderAssignments", onDelete: "CASCADE" });
+db.orderAssignment.belongsTo(db.order, { foreignKey: "orderId", as: "order" });
+
+// orderAssignment → detail tables
+db.orderAssignment.hasOne(db.labourAssignmentDetail, { foreignKey: "assignmentId", as: "labourDetail", onDelete: "CASCADE" });
+db.labourAssignmentDetail.belongsTo(db.orderAssignment, { foreignKey: "assignmentId", as: "assignment" });
+db.labourAssignmentDetail.belongsTo(db.skill, { foreignKey: "skillId", as: "skill" });
+
+db.orderAssignment.hasOne(db.contractorAssignmentDetail, { foreignKey: "assignmentId", as: "contractorDetail", onDelete: "CASCADE" });
+db.contractorAssignmentDetail.belongsTo(db.orderAssignment, { foreignKey: "assignmentId", as: "assignment" });
+db.contractorAssignmentDetail.belongsTo(db.category, { foreignKey: "categoryId", as: "category" });
+
+// orderAssignment → milestones
+db.orderAssignment.hasMany(db.contractorMilestone, { foreignKey: "assignmentId", as: "milestones", onDelete: "CASCADE" });
+db.contractorMilestone.belongsTo(db.orderAssignment, { foreignKey: "assignmentId", as: "assignment" });
+
+// orderAssignment → workAttendance (new-flow via assignmentId)
+db.orderAssignment.hasMany(db.workAttendance, { foreignKey: "assignmentId", as: "attendances", onDelete: "CASCADE" });
+db.workAttendance.belongsTo(db.orderAssignment, { foreignKey: "assignmentId", as: "orderAssignment" });
+
 db.connectDB = connectDB;
-module.exports =db;
+module.exports = db;
 
 
 

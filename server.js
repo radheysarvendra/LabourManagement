@@ -8,7 +8,6 @@ const { ensureDefaultAdmin } = require("./controller/admin");
 const db = require("./model");
 const { seedSkills } = require("./utils/seedSkills");
 const { seedAddressData } = require("./utils/seedAddressData");
-const { ensureSchema } = require("./utils/ensureSchema");
 
 const app = express();
 const server = http.createServer(app);
@@ -24,7 +23,6 @@ const routes = require("./routes");
 app.use("", routes);
 
 const runStartupTasks = async () => {
-  await ensureSchema(db);
   await seedSkills(db.skill, db.category, db.categorySkill);
   await seedAddressData(db);
 };

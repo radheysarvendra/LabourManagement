@@ -1,59 +1,48 @@
 module.exports = (sequelize, DataTypes) => {
-  const AuthOtp = sequelize.define(
-    "authOtp",
-    {
-      id: {
-        type: DataTypes.INTEGER,
-        autoIncrement: true,
-        primaryKey: true,
-        allowNull: false,
-      },
-      phone: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
-      userId: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-      },
-      userType: {
-        type: DataTypes.ENUM("labour", "owner", "contractor", "contractor_customer"),
-        allowNull: false,
-      },
-      otpHash: {
-        type: DataTypes.TEXT,
-        allowNull: false,
-      },
-      expiresAt: {
-        type: DataTypes.DATE,
-        allowNull: false,
-      },
-      attempts: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 0,
-      },
-      verified: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: false,
-      },
+  const AuthOtp = sequelize.define("authOtp", {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+      allowNull: false,
     },
-    {
-      tableName: "authOtps",
-      timestamps: true,
-      indexes: [
-        {
-          name: "idx_auth_otps_phone",
-          fields: ["phone"],
-        },
-        {
-          name: "idx_auth_otps_phone_user_type",
-          fields: ["phone", "userType"],
-        },
-      ],
-    }
-  );
+    phone: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    // nullable — new flow only needs phone for OTP; userId linked after verification
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    otpHash: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    attempts: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    expiresAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+    },
+    // null = not yet verified, DATE = verified at this time
+    verifiedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
+  }, {
+    tableName: "authOtps",
+    timestamps: true,
+    updatedAt: false,
+    indexes: [
+      { fields: ["phone"], name: "idx_auth_otps_phone" },
+      { fields: ["phone", "verifiedAt"], name: "idx_auth_otps_phone_verified" },
+    ],
+  });
 
   return AuthOtp;
 };

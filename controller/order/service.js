@@ -177,6 +177,9 @@ const createOrderService = async (payload) => {
     userId,
     ownerId,
     _userType,
+    _authenticatedUserId,
+    _activeRole,
+    _isSessionAuth,
     categoryId,
     categoryName,
     skillId,
@@ -195,11 +198,20 @@ const createOrderService = async (payload) => {
   } = payload;
   const requiredCount = getRequiredLabourCount(payload);
   const needType = normalizeNeedType(payload);
+  const requesterUserId = _isSessionAuth ? Number(_authenticatedUserId) : null;
+  let legacyProfileId = _isSessionAuth ? null : Number(_authenticatedUserId || userId);
 
-  if (!userId) {
+  if (_isSessionAuth) {
+    const profile = _activeRole === "LABOUR"
+      ? await Labour.findOne({ where: { userId: requesterUserId }, attributes: ["id"] })
+      : await Owner.findOne({ where: { userId: requesterUserId }, attributes: ["id"] });
+    legacyProfileId = profile?.id || null;
+  }
+
+  if (!requesterUserId && !legacyProfileId) {
     return {
       statusCode: 400,
-      body: { success: false, message: "User ID is required" },
+      body: { success: false, message: "Authenticated user ID is required" },
     };
   }
 
@@ -217,20 +229,57 @@ const createOrderService = async (payload) => {
     };
   }
 
+  // Prevent duplicate order — same owner + same skill + same pincode + same date + pending/assigned
+  const existingOrder = await Order.findOne({
+    where: {
+      pincode,
+      skillId: skillId || null,
+      skill: skill || null,
+      status: ["pending", "assigned"],
+    },
+    include: [{
+      model: OrderMapping,
+      as: "mappings",
+      required: true,
+      where: { userId: legacyProfileId, userType: "owner" },
+    }],
+  });
+
+  if (existingOrder) {
+    return {
+      statusCode: 409,
+      body: {
+        success: false,
+        message: "Aapka ek order already pending hai isi skill aur pincode ke liye.",
+        existingOrderId: existingOrder.id,
+        existingOrderCode: existingOrder.orderCode,
+      },
+    };
+  }
+
   const skillData = skillId ? await Skill.findOne({ where: { id: skillId } }) : null;
   const categoryData = categoryId ? await Category.findOne({ where: { id: categoryId } }) : null;
   const skillName = skill || skillData?.skillName;
 
   // Token ke userType se correct table mein dhundo (Labour ya Owner ID collision avoid karo)
-  const isLabourUser = _userType === "labour";
+  const isLabourUser = _activeRole === "LABOUR" || _userType === "labour";
   const ownerRecord = !isLabourUser
-    ? await Owner.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] })
+    ? await Owner.findOne({
+        where: _isSessionAuth ? { userId: requesterUserId } : { id: legacyProfileId },
+        attributes: ["id", "name", "phone", "userId"],
+      })
     : null;
   const userRecord = isLabourUser
-    ? await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] })
-    : (ownerRecord || await Labour.findOne({ where: { id: userId }, attributes: ["id", "name", "phone"] }));
-  const ownerName = userRecord?.name || null;
-  const ownerPhone = userRecord?.phone || null;
+    ? await Labour.findOne({
+        where: _isSessionAuth ? { userId: requesterUserId } : { id: legacyProfileId },
+        attributes: ["id", "name", "phone", "userId"],
+      })
+    : ownerRecord;
+  const globalUser = requesterUserId
+    ? await db.user.findByPk(requesterUserId, { attributes: ["id", "name", "phone"] })
+    : null;
+  const ownerName = globalUser?.name || userRecord?.name || null;
+  const ownerPhone = globalUser?.phone || userRecord?.phone || null;
 
   if (skillId && !skillData) {
     return {
@@ -271,6 +320,7 @@ const createOrderService = async (payload) => {
   const order = await db.sequelize.transaction(async (transaction) => {
     const createdOrder = await Order.create({
       orderCode: await generateOrderCode(),
+      createdByUserId: requesterUserId || userRecord?.userId || null,
       ownerName,
       ownerPhone,
       categoryId: categoryId || null,
@@ -297,7 +347,7 @@ const createOrderService = async (payload) => {
 
     await OrderMapping.create({
       orderId: createdOrder.id,
-      userId,
+      userId: legacyProfileId,
       ownerId: ownerId || ownerRecord?.id || null,
       labourId: null,
       userType: "owner",
@@ -348,6 +398,7 @@ const getOrdersService = async ({
   orderType,
   bookingFor,
   requestedProviderRole,
+  actorUserId,
   page = 1,
   limit = 20,
 }) => {
@@ -358,6 +409,17 @@ const getOrdersService = async ({
   const include = [...orderInclude];
   const resolvedNeedType = needType ?? orderType ?? bookingFor ?? requestedProviderRole;
   const { Op } = db.Sequelize;
+
+  if (actorUserId) {
+    const assignments = await db.orderAssignment.findAll({
+      where: { providerUserId: Number(actorUserId) },
+      attributes: ["orderId"],
+    });
+    where[Op.or] = [
+      { createdByUserId: Number(actorUserId) },
+      { id: assignments.map((item) => item.orderId) },
+    ];
+  }
 
   if (status) {
     where.status = status;
@@ -430,7 +492,7 @@ const getOrdersService = async ({
   };
 };
 
-const getOrderByIdService = async (id) => {
+const getOrderByIdService = async (id, actorUserId = null) => {
   const data = await Order.findOne({ where: { id }, include: orderInclude });
 
   if (!data) {
@@ -438,6 +500,15 @@ const getOrderByIdService = async (id) => {
       statusCode: 404,
       body: { success: false, message: "Order not found" },
     };
+  }
+
+  if (actorUserId && Number(data.createdByUserId) !== Number(actorUserId)) {
+    const assignment = await db.orderAssignment.findOne({
+      where: { orderId: id, providerUserId: Number(actorUserId) },
+    });
+    if (!assignment) {
+      return { statusCode: 403, body: { success: false, message: "You cannot access this order" } };
+    }
   }
 
   const json = data.toJSON ? data.toJSON() : data;
@@ -522,8 +593,11 @@ const updateOrderAdminStatusService = async (id, payload) => {
     };
   }
 
+  let foundLabours = [];
+  let foundContractors = [];
+
   if (selectedLabours.length > 0) {
-    const foundLabours = await Labour.findAll({
+    foundLabours = await Labour.findAll({
       where: { id: selectedLabours.map((labour) => labour.labourId) },
     });
 
@@ -536,7 +610,7 @@ const updateOrderAdminStatusService = async (id, payload) => {
   }
 
   if (selectedContractorIds.length > 0) {
-    const foundContractors = await Owner.findAll({
+    foundContractors = await Owner.findAll({
       where: { id: selectedContractorIds },
     });
 
@@ -594,6 +668,59 @@ const updateOrderAdminStatusService = async (id, payload) => {
           status: "assigned",
           adminStatus: "approved",
       })), { transaction });
+    }
+
+    if (adminStatus === "approved") {
+      const roleCode = effectiveAssignedType === "contractor" ? "CONTRACTOR" : "LABOUR";
+      const appRole = await db.appRole.findOne({ where: { code: roleCode }, transaction });
+      if (!appRole) throw new Error(`Application role ${roleCode} is not configured`);
+
+      const providers = effectiveAssignedType === "contractor"
+        ? foundContractors.map((provider) => ({ provider, selection: null }))
+        : foundLabours.map((provider) => ({
+            provider,
+            selection: selectedLabours.find((item) => Number(item.labourId) === Number(provider.id)),
+          }));
+
+      for (const { provider, selection } of providers) {
+        if (!provider.userId) throw new Error(`Provider ${provider.id} is not linked to a user account`);
+        const userRole = await db.userRole.findOne({
+          where: { userId: provider.userId, roleId: appRole.id, profileStatus: "complete" },
+          transaction,
+        });
+        if (!userRole) throw new Error(`Provider ${provider.id} does not have an active ${roleCode} role`);
+
+        const [assignment] = await db.orderAssignment.findOrCreate({
+          where: { orderId: id, providerUserId: provider.userId, providerRoleId: appRole.id },
+          defaults: {
+            assignmentStatus: "assigned",
+            adminStatus: "approved",
+            assignedByAdminId: middlemanId || staffId || null,
+            assignedAt: new Date(),
+          },
+          transaction,
+        });
+
+        if (roleCode === "LABOUR") {
+          await db.labourAssignmentDetail.upsert({
+            assignmentId: assignment.id,
+            skillId: order.skillId || null,
+            dailyWage: selection?.dailyWage ?? null,
+            startDate: fromDate || null,
+            endDate: toDate || null,
+          }, { transaction });
+        } else {
+          await db.contractorAssignmentDetail.upsert({
+            assignmentId: assignment.id,
+            categoryId: order.categoryId || null,
+            contractFee: payload.contractFee || null,
+            startDate: fromDate || null,
+            endDate: toDate || null,
+            paymentTermType: payload.paymentTermType || null,
+            paymentTerms: payload.paymentTerms || null,
+          }, { transaction });
+        }
+      }
     }
 
     if (adminStatus === "approved" && effectiveAssignedType === "labour") {

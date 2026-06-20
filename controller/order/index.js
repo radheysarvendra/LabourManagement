@@ -5,6 +5,9 @@ const createOrder = async (req,res) => {
     const result = await orderService.createOrderService({
       ...req.body,
       _userType: req.user?.type || req.user?.userType,
+      _authenticatedUserId: req.user?.userId || req.user?.id,
+      _activeRole: req.user?.activeRole || null,
+      _isSessionAuth: Boolean(req.user?.sessionId),
     });
     return res.status(result.statusCode).send(result.body);
   } catch (err) {
@@ -17,7 +20,15 @@ const createOrder = async (req,res) => {
 
 const getOrders = async (req,res) => {
   try {
-    const result = await orderService.getOrdersService(req.query);
+    const query = { ...req.query };
+    if (req.user?.sessionId) {
+      delete query.userId;
+      delete query.ownerId;
+      delete query.labourId;
+      delete query.contractorId;
+      query.actorUserId = req.user.userId;
+    }
+    const result = await orderService.getOrdersService(query);
     return res.status(result.statusCode).send(result.body);
   } catch (err) {
     return res.status(500).send({
@@ -29,7 +40,10 @@ const getOrders = async (req,res) => {
 
 const getOrderById = async (req,res) => {
   try {
-    const result = await orderService.getOrderByIdService(req.params.id);
+    const result = await orderService.getOrderByIdService(
+      req.params.id,
+      req.user?.sessionId ? req.user.userId : null
+    );
     return res.status(result.statusCode).send(result.body);
   } catch (err) {
     return res.status(500).send({
