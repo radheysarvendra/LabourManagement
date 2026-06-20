@@ -148,6 +148,12 @@ const deleteRoleById = async (req, res) => {
       message: "Role deleted successfully",
     });
   } catch (err) {
+    if (err.name === "SequelizeForeignKeyConstraintError") {
+      return res.status(409).send({
+        success: false,
+        message: "Role is in use and cannot be deleted",
+      });
+    }
     return res.status(500).send({
       success: false,
       message: err.message,
