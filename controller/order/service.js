@@ -723,15 +723,17 @@ const updateOrderAdminStatusService = async (id, payload) => {
       }
     }
 
-    if (adminStatus === "approved" && effectiveAssignedType === "labour") {
+    if (adminStatus === "approved") {
       const assignmentResult = await workAssignmentService.createAssignmentFromOrderService(id, {
         middlemanId: middlemanId || staffId || null,
         fromDate,
         toDate,
         workLocation,
         notes,
-        labours: hasManualLabourSelection ? selectedLabours : undefined,
-        replaceLabours: hasManualLabourSelection,
+        labours: effectiveAssignedType === "labour" && hasManualLabourSelection
+          ? selectedLabours
+          : undefined,
+        replaceLabours: effectiveAssignedType === "labour" && hasManualLabourSelection,
         status: "upcoming",
         transaction,
       });

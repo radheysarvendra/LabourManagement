@@ -14,6 +14,25 @@ const TOKEN_SECRET = config.SECRET_KEY;
 const DEFAULT_TEST_OTP = process.env.DEFAULT_TEST_OTP || "1234";
 const EXPOSE_TEST_OTP = process.env.EXPOSE_TEST_OTP === "true" || process.env.NODE_ENV !== "production";
 const OTP_EXPIRY_MINUTES = Number(process.env.OTP_EXPIRY_MINUTES || 10);
+const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || "";
+
+const generateOtp = () => {
+  if (process.env.NODE_ENV !== "production") return DEFAULT_TEST_OTP;
+  return String(Math.floor(100000 + Math.random() * 900000)); // 6-digit random
+};
+
+const sendSmsOtp = async (phone, otp) => {
+  if (!FAST2SMS_API_KEY || process.env.NODE_ENV !== "production") return;
+  try {
+    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${FAST2SMS_API_KEY}&variables_values=${otp}&route=otp&numbers=${phone}`;
+    const https = require("https");
+    await new Promise((resolve) => {
+      https.get(url, (res) => { res.resume(); res.on("end", resolve); }).on("error", resolve);
+    });
+  } catch (e) {
+    console.warn("SMS send failed (non-fatal):", e.message);
+  }
+};
 
 // ── Legacy role constants (old flow) ──────────────────────────────────────────
 const ROLE_TYPES = {
@@ -259,10 +278,12 @@ const requestOtp = async (req, res) => {
     if (globalUser && globalUser.userRoles && globalUser.userRoles.length > 0) {
       // New flow — send a single OTP (not per-role)
       await AuthOtp.destroy({ where: { phone } });
-      const otpHash = hashOtp(DEFAULT_TEST_OTP);
+      const otp = generateOtp();
+      const otpHash = hashOtp(otp);
       const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
       await AuthOtp.create({ phone, userId: globalUser.id, otpHash, expiresAt });
+      await sendSmsOtp(phone, otp);
 
       const roles = globalUser.userRoles.map((ur) => ur.appRole?.code).filter(Boolean);
 
@@ -275,7 +296,7 @@ const requestOtp = async (req, res) => {
         flow: "new",
       };
 
-      if (EXPOSE_TEST_OTP) response.testOtp = DEFAULT_TEST_OTP;
+      if (EXPOSE_TEST_OTP) response.testOtp = otp;
 
       return res.status(200).send(response);
     }
@@ -296,7 +317,8 @@ const requestOtp = async (req, res) => {
     }
 
     await AuthOtp.destroy({ where: { phone } });
-    const otpHash = hashOtp(DEFAULT_TEST_OTP);
+    const otp = generateOtp();
+    const otpHash = hashOtp(otp);
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
     await Promise.all(
@@ -322,7 +344,8 @@ const requestOtp = async (req, res) => {
       flow: "legacy",
     };
 
-    if (EXPOSE_TEST_OTP) response.testOtp = DEFAULT_TEST_OTP;
+    await sendSmsOtp(phone, otp);
+    if (EXPOSE_TEST_OTP) response.testOtp = otp;
 
     return res.status(200).send(response);
   } catch (err) {
