@@ -97,6 +97,112 @@ const mapContractor = (owner) => {
   };
 };
 
+const mapNewContractor = (profile) => {
+  const json = profile.toJSON ? profile.toJSON() : profile;
+  const user = json.user || {};
+  const skills = (json.contractorSkills || []).map((cs) => ({
+    skillId: cs.skillId,
+    skillName: cs.skill?.skillName || null,
+    hindi: cs.skill?.hindi || null,
+    rate: cs.rate || null,
+    experienceYears: cs.experienceYears || 0,
+  }));
+  const categories = (json.contractorCategories || []).map((cc) => ({
+    categoryId: cc.categoryId,
+    categoryName: cc.category?.name || null,
+  }));
+
+  return {
+    id: json.userId,
+    userId: json.userId,
+    name: user.name || null,
+    phone: user.phone || null,
+    providerType: "contractor",
+    contractorCode: json.contractorCode || null,
+    companyName: json.companyName || null,
+    experienceYears: json.experienceYears || 0,
+    skills,
+    categories,
+    primarySkillId: skills[0]?.skillId || null,
+    primarySkillName: skills[0]?.skillName || null,
+    primaryCategoryId: categories[0]?.categoryId || null,
+    primaryCategoryName: categories[0]?.categoryName || null,
+    stateId: user.stateId || null,
+    districtId: user.districtId || null,
+    pincodeId: user.pincodeId || null,
+    postOfficeId: user.postOfficeId || null,
+    state: user.state || null,
+    district: user.district || null,
+    pincode: user.pincode || null,
+    postOffice: user.postOffice || null,
+    city: user.city || null,
+    area: user.area || null,
+    age: user.age || null,
+    gender: user.gender || null,
+    profileImage: user.profileImage || null,
+    isAvailable: json.isAvailable,
+    isVerified: json.verificationStatus === "verified",
+    verificationStatus: json.verificationStatus,
+    flow: "new",
+    createdAt: json.createdAt,
+  };
+};
+
+const searchNewContractors = async ({
+  categoryId, skillId,
+  stateId, districtId, pincodeId, postOfficeId,
+  state, district, pincode, postOffice,
+  page = 1, limit = 20,
+}) => {
+  const pageNumber = Math.max(Number(page) || 1, 1);
+  const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const offset = (pageNumber - 1) * pageLimit;
+
+  const profileWhere = { isAvailable: true };
+  const userWhere = buildUserLocationWhere({
+    stateId, districtId, pincodeId, postOfficeId,
+    state, district, pincode, postOffice,
+  });
+  const hasLocationFilter = Object.keys(userWhere).length > 0;
+
+  const skillInclude = {
+    model: db.contractorSkill,
+    as: "contractorSkills",
+    required: !!skillId,
+    where: skillId ? { skillId: Number(skillId) } : undefined,
+    include: [{ model: Skill, as: "skill", required: false }],
+  };
+
+  const categoryInclude = {
+    model: db.contractorCategory,
+    as: "contractorCategories",
+    required: !!categoryId,
+    where: categoryId ? { categoryId: Number(categoryId) } : undefined,
+    include: [{ model: Category, as: "category", required: false }],
+  };
+
+  const result = await db.contractorProfile.findAndCountAll({
+    where: profileWhere,
+    include: [
+      {
+        model: User,
+        as: "user",
+        required: hasLocationFilter,
+        where: hasLocationFilter ? userWhere : undefined,
+        attributes: ["id", "name", "phone", "age", "gender", "profileImage", "city", "district", "state", "stateId", "districtId", "pincode", "pincodeId", "postOffice", "postOfficeId", "area"],
+      },
+      skillInclude,
+      categoryInclude,
+    ],
+    distinct: true,
+    order: [["createdAt", "DESC"]],
+    offset,
+    limit: pageLimit,
+  });
+
+  return result;
+};
+
 const searchContractors = async ({
   categoryId, skillId,
   stateId, districtId, pincodeId, postOfficeId,
@@ -107,12 +213,37 @@ const searchContractors = async ({
   const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
   const offset = (pageNumber - 1) * pageLimit;
 
+  // Try new-flow first (contractorProfiles table)
+  let newFlowResult = null;
+  try {
+    newFlowResult = await searchNewContractors({
+      categoryId, skillId,
+      stateId, districtId, pincodeId, postOfficeId,
+      state, district, pincode, postOffice,
+      page, limit,
+    });
+  } catch (e) {
+    console.warn("New contractor search failed, falling back to old flow:", e.message);
+  }
+
+  // If new flow returned results, return them
+  if (newFlowResult && newFlowResult.count > 0) {
+    return {
+      success: true,
+      providerType: "contractor",
+      total: newFlowResult.count,
+      availableCount: newFlowResult.count,
+      page: pageNumber,
+      limit: pageLimit,
+      totalPages: Math.ceil(newFlowResult.count / pageLimit),
+      data: newFlowResult.rows.map(mapNewContractor),
+    };
+  }
+
+  // Old flow fallback — owners table with registeredFrom=contractor
   const ownerWhere = { registeredFrom: "contractor", isActive: true };
   if (categoryId) ownerWhere.categoryId = Number(categoryId);
   if (skillId) ownerWhere.skillId = Number(skillId);
-
-  const userWhere = buildUserLocationWhere({ stateId, districtId, pincodeId, postOfficeId, state, district, pincode, postOffice });
-  const hasLocationFilter = Object.keys(userWhere).length > 0;
 
   const result = await Owner.findAndCountAll({
     where: ownerWhere,
@@ -120,9 +251,8 @@ const searchContractors = async ({
       {
         model: User,
         as: "user",
-        required: hasLocationFilter,
+        required: false,
         attributes: ["id", "name", "age", "gender", "profileImage", "city", "district", "state", "stateId", "districtId", "pincode", "pincodeId", "postOffice", "postOfficeId", "area"],
-        ...(hasLocationFilter ? { where: userWhere } : {}),
       },
       { model: Skill, as: "skillDetail", required: false },
       { model: Category, as: "categoryDetail", required: false },

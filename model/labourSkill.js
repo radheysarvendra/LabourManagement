@@ -8,9 +8,17 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         allowNull: false,
       },
+      // new-flow: FK → labourProfiles.userId (= users.id)
+      labourUserId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "labourProfiles", key: "userId" },
+        onDelete: "CASCADE",
+      },
+      // old-flow backward compat: FK → labours.id
       labourId: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         references: {
           model: "labours",
           key: "id",

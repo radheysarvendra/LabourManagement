@@ -1,5 +1,5 @@
 const db = require("../../model/index");
-const { generateToken, saveToken } = require("../../middleware/auth");
+const { generateSession } = require("../../middleware/auth");
 
 const User = db.user;
 const Labour = db.labour;
@@ -8,6 +8,14 @@ const LabourSkill = db.labourSkill;
 
 const OWNER_ROLES = ["owner", "contractor", "contractor_customer"];
 const VALID_ROLES = ["labour", "owner", "contractor", "contractor_customer"];
+
+// Map old role codes to new app role codes
+const ROLE_CODE_MAP = {
+  labour: "LABOUR",
+  owner: "OWNER",
+  contractor: "CONTRACTOR",
+  contractor_customer: "OWNER",
+};
 
 const registerService = async (payload) => {
   const {
@@ -55,6 +63,12 @@ const registerService = async (payload) => {
     }
   }
 
+  if (role === "contractor") {
+    if (!categoryId || !skillId) {
+      return { statusCode: 400, body: { success: false, message: "categoryId and skillId are required for contractor registration" } };
+    }
+  }
+
   // Check if phone already exists in users table
   const existingUser = await User.findOne({ where: { phone: normalizedPhone } });
   if (existingUser) {
@@ -72,7 +86,7 @@ const registerService = async (payload) => {
   }
 
   // Wrap in transaction — if profile creation fails, user row is rolled back
-  const { user, profileRecord } = await db.sequelize.transaction(async (t) => {
+  const { user, profileRecord, appRoleCode } = await db.sequelize.transaction(async (t) => {
     const newUser = await User.create({
       name,
       phone: normalizedPhone,
@@ -108,7 +122,7 @@ const registerService = async (payload) => {
 
       if (skills && skills.length > 0) {
         await LabourSkill.bulkCreate(
-          skills.map((skillId) => ({ labourId: newProfile.id, skillId: Number(skillId) })),
+          skills.map((skillId) => ({ labourUserId: newUser.id, labourId: newProfile.id, skillId: Number(skillId) })),
           { transaction: t, ignoreDuplicates: true }
         );
       }
@@ -126,11 +140,49 @@ const registerService = async (payload) => {
       }, { transaction: t });
     }
 
-    return { user: newUser, profileRecord: newProfile };
+    const appRoleCode = ROLE_CODE_MAP[role];
+    const appRole = await db.appRole.findOne({
+      where: { code: appRoleCode, isActive: true },
+      transaction: t,
+    });
+    if (!appRole) throw new Error(`Application role ${appRoleCode} is not configured`);
+
+    await db.userRole.create({
+      userId: newUser.id,
+      roleId: appRole.id,
+      profileStatus: "complete",
+    }, { transaction: t });
+
+    if (role === "labour") {
+      await db.labourProfile.create({
+        userId: newUser.id,
+        labourCode: newProfile.labourCode || null,
+        experienceYears: 0,
+        isAvailable: true,
+        verificationStatus: "pending",
+      }, { transaction: t });
+    } else if (role === "contractor") {
+      await db.contractorProfile.create({
+        userId: newUser.id,
+        experienceYears: 0,
+        isAvailable: true,
+        verificationStatus: "pending",
+      }, { transaction: t });
+      await db.contractorSkill.create({
+        contractorUserId: newUser.id,
+        skillId: Number(skillId),
+        experienceYears: 0,
+      }, { transaction: t });
+      await db.contractorCategory.create({
+        contractorUserId: newUser.id,
+        categoryId: Number(categoryId),
+      }, { transaction: t });
+    }
+
+    return { user: newUser, profileRecord: newProfile, appRoleCode };
   });
 
-  const token = generateToken(profileRecord, role);
-  await saveToken(profileRecord, token, role);
+  const { token } = await generateSession(user.id, appRoleCode);
 
   return {
     statusCode: 201,
@@ -140,10 +192,11 @@ const registerService = async (payload) => {
       token,
       type: role,
       userType: role,
-      userId: profileRecord.id,
+      userId: user.id,
       labourId: role === "labour" ? profileRecord.id : null,
       ownerId: OWNER_ROLES.includes(role) ? profileRecord.id : null,
       globalUserId: user.id,
+      activeRole: appRoleCode,
       user: {
         id: user.id,
         name: user.name,
@@ -158,7 +211,27 @@ const registerService = async (payload) => {
 };
 
 // Called when a labour user wants to use owner role for the first time
-const completeOwnerProfileService = async ({ userId, userType, workType, categoryId, skillId, city, state, district, pincode, area, postOffice, address }) => {
+const completeOwnerProfileService = async ({ userId, userType, isSessionAuth, workType, categoryId, skillId, city, state, district, pincode, area, postOffice, address }) => {
+  if (isSessionAuth) {
+    const globalUser = await User.findByPk(userId);
+    if (!globalUser) return { statusCode: 404, body: { success: false, message: "User not found" } };
+    const owner = await db.sequelize.transaction(async (transaction) => {
+      const [legacyOwner] = await Owner.findOrCreate({
+        where: { userId: globalUser.id },
+        defaults: {
+          name: globalUser.name, phone: globalUser.phone, workType: workType || "both",
+          categoryId: categoryId || null, skillId: skillId || null,
+          isActive: true, registeredFrom: "owner", status: 1,
+        },
+        transaction,
+      });
+      const role = await db.appRole.findOne({ where: { code: "OWNER", isActive: true }, transaction });
+      if (!role) throw new Error("Application role OWNER is not configured");
+      await db.userRole.upsert({ userId: globalUser.id, roleId: role.id, profileStatus: "complete" }, { transaction });
+      return legacyOwner;
+    });
+    return { statusCode: 200, body: { success: true, message: "Owner profile complete", profile: owner } };
+  }
   const profileRecord = userType === "labour"
     ? await Labour.findOne({ where: { id: userId } })
     : await Owner.findOne({ where: { id: userId } });
@@ -191,12 +264,48 @@ const completeOwnerProfileService = async ({ userId, userType, workType, categor
 };
 
 // Called when an owner user wants to use labour role for the first time
-const completeLabourProfileService = async ({ userId, userType, skills, age, gender, city, state, district, pincode, area, postOffice, address, stateId, districtId, pincodeId, postOfficeId }) => {
+const completeLabourProfileService = async ({ userId, userType, isSessionAuth, skills, age, gender, city, state, district, pincode, area, postOffice, address, stateId, districtId, pincodeId, postOfficeId }) => {
   if (!age || !gender) {
     return { statusCode: 400, body: { success: false, message: "Age and gender are required" } };
   }
   if (!skills || !Array.isArray(skills) || skills.length === 0) {
     return { statusCode: 400, body: { success: false, message: "Select at least one worker skill" } };
+  }
+
+  if (isSessionAuth) {
+    const globalUser = await User.findByPk(userId);
+    if (!globalUser) return { statusCode: 404, body: { success: false, message: "User not found" } };
+    const labour = await db.sequelize.transaction(async (transaction) => {
+      await globalUser.update({
+        age: Number(age), gender, city: city || globalUser.city, state: state || globalUser.state,
+        stateId: stateId || globalUser.stateId, district: district || globalUser.district,
+        districtId: districtId || globalUser.districtId, pincode: pincode || globalUser.pincode,
+        pincodeId: pincodeId || globalUser.pincodeId, postOffice: postOffice || globalUser.postOffice,
+        postOfficeId: postOfficeId || globalUser.postOfficeId, area: area || globalUser.area,
+        address: address || globalUser.address,
+      }, { transaction });
+      const [legacyLabour] = await Labour.findOrCreate({
+        where: { userId: globalUser.id },
+        defaults: {
+          name: globalUser.name, phone: globalUser.phone, isAvailable: true,
+          isVerified: false, registeredFrom: "labour", status: 1,
+        },
+        transaction,
+      });
+      const role = await db.appRole.findOne({ where: { code: "LABOUR", isActive: true }, transaction });
+      if (!role) throw new Error("Application role LABOUR is not configured");
+      await db.userRole.upsert({ userId: globalUser.id, roleId: role.id, profileStatus: "complete" }, { transaction });
+      await db.labourProfile.upsert({
+        userId: globalUser.id, labourCode: legacyLabour.labourCode || null,
+        experienceYears: legacyLabour.experienceYears || 0,
+        isAvailable: true, verificationStatus: legacyLabour.isVerified ? "verified" : "pending",
+      }, { transaction });
+      await LabourSkill.bulkCreate(skills.map((sid) => ({
+        labourUserId: globalUser.id, labourId: legacyLabour.id, skillId: Number(sid),
+      })), { transaction, ignoreDuplicates: true });
+      return legacyLabour;
+    });
+    return { statusCode: 200, body: { success: true, message: "Labour profile complete", profile: labour } };
   }
 
   const profileRecord = userType === "owner" || userType === "contractor" || userType === "contractor_customer"

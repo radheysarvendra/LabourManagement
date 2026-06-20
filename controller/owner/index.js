@@ -14,7 +14,7 @@ const createOwner = async (req,res) => {
 
 const getAllOwners = async (req,res) => {
   try {
-    const result = await ownerService.getAllOwnersService();
+    const result = await ownerService.getAllOwnersService(req.query);
     return res.status(result.statusCode).send(result.body);
   } catch (err) {
     return res.status(500).send({

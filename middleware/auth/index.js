@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const { v4: uuidv4 } = require("uuid");
 const db = require("../../model/index");
 const { config } = require("../../config/db.config");
 
@@ -13,6 +14,8 @@ const TOKEN_SECRET = config.SECRET_KEY;
 const DEFAULT_TEST_OTP = process.env.DEFAULT_TEST_OTP || "1234";
 const EXPOSE_TEST_OTP = process.env.EXPOSE_TEST_OTP === "true" || process.env.NODE_ENV !== "production";
 const OTP_EXPIRY_MINUTES = Number(process.env.OTP_EXPIRY_MINUTES || 10);
+
+// ── Legacy role constants (old flow) ──────────────────────────────────────────
 const ROLE_TYPES = {
   LABOUR: "labour",
   OWNER: "owner",
@@ -38,7 +41,7 @@ const extractTokenFromHeader = (authHeader) => {
   return authHeader.replace("Bearer ", "").trim();
 };
 
-// Generate Token
+// ── Legacy token generation (old mobile_token_maps flow) ─────────────────────
 const generateToken = (user, userType) => {
   const type = userType;
   const profileId = user.id;
@@ -62,7 +65,6 @@ const generateToken = (user, userType) => {
   );
 };
 
-// Save Token
 const saveToken = async (user, token, userType) => {
   await TokenDetails.destroy({
     where: { userId: user.id, userType },
@@ -78,6 +80,45 @@ const saveToken = async (user, token, userType) => {
     expiry: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
   });
 };
+
+// ── New session-based flow ────────────────────────────────────────────────────
+
+const hashToken = (token) =>
+  crypto.createHash("sha256").update(token).digest("hex").slice(0, 64);
+
+const generateSession = async (userId, roleCode) => {
+  const appRole = await db.appRole.findOne({ where: { code: roleCode, isActive: true } });
+  if (!appRole) throw new Error(`Unknown role code: ${roleCode}`);
+  const [user, userRole] = await Promise.all([
+    User.findOne({ where: { id: userId, accountStatus: "active" } }),
+    db.userRole.findOne({ where: { userId, roleId: appRole.id, profileStatus: "complete" } }),
+  ]);
+  if (!user) throw new Error("User account is not active");
+  if (!userRole) throw new Error(`Role ${roleCode} is unavailable or incomplete`);
+
+  const sessionId = uuidv4();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  const token = jwt.sign(
+    { sessionId, userId, activeRole: roleCode },
+    TOKEN_SECRET,
+    { expiresIn: "7d" }
+  );
+
+  const tokenHash = hashToken(token);
+
+  await db.session.create({
+    id: sessionId,
+    userId,
+    activeRoleId: appRole.id,
+    tokenHash,
+    expiresAt,
+  });
+
+  return { token, sessionId };
+};
+
+// ── Utilities ────────────────────────────────────────────────────────────────
 
 const normalizePhone = (phone) => String(phone || "").replace(/[^0-9]/g, "").trim();
 
@@ -100,6 +141,8 @@ const verifyOtpHash = (otp, savedHash) => {
     crypto.timingSafeEqual(savedBuffer, verifyBuffer)
   );
 };
+
+// ── Old-flow user lookups (kept for backward compat) ─────────────────────────
 
 const findUserByPhone = async (phone) => {
   const labour = await Labour.findOne({ where: { phone } });
@@ -128,9 +171,6 @@ const findUsersByPhone = async (phone) => {
     users.push({ user: owner, userType: ROLE_TYPES.CONTRACTOR_CUSTOMER });
   }
 
-  // Cross-role: user registered via new flow (users table) but only has one role record.
-  // Auto-create the missing owner record so they can use all 4 roles.
-  // (Labour cross-creation is skipped — needs skills/age/gender via /api/profile/complete-labour)
   if (!owner && labour) {
     const globalUser = await User.findOne({ where: { phone } });
     if (globalUser) {
@@ -197,22 +237,54 @@ const buildAuthResponse = ({ token, user, userType, roles, message = "Login succ
 
 const isProfileRegistered = (user) => Number(user?.status ?? 1) === 1;
 
+// ── OTP Request ───────────────────────────────────────────────────────────────
+// New flow: no userType required — phone only. Role is selected at verifyOtp.
+// Old flow: userType still accepted for backward compat.
+
 const requestOtp = async (req, res) => {
   try {
     const phone = normalizePhone(req.body.phone);
 
     if (phone.length !== 10) {
-      return res.status(400).send({
-        success: false,
-        message: "Enter a 10-digit mobile number",
-      });
+      return res.status(400).send({ success: false, message: "Enter a 10-digit mobile number" });
     }
 
+    // New-flow check: does this phone have a users row with userRoles?
+    const globalUser = await User.findOne({
+      where: { phone },
+      include: [{ model: db.userRole, as: "userRoles", required: false,
+        include: [{ model: db.appRole, as: "appRole" }] }],
+    });
+
+    if (globalUser && globalUser.userRoles && globalUser.userRoles.length > 0) {
+      // New flow — send a single OTP (not per-role)
+      await AuthOtp.destroy({ where: { phone } });
+      const otpHash = hashOtp(DEFAULT_TEST_OTP);
+      const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+      await AuthOtp.create({ phone, userId: globalUser.id, otpHash, expiresAt });
+
+      const roles = globalUser.userRoles.map((ur) => ur.appRole?.code).filter(Boolean);
+
+      const response = {
+        success: true,
+        message: "OTP sent successfully",
+        isRegistered: true,
+        roles,
+        requiresRoleSelection: roles.length > 1,
+        flow: "new",
+      };
+
+      if (EXPOSE_TEST_OTP) response.testOtp = DEFAULT_TEST_OTP;
+
+      return res.status(200).send(response);
+    }
+
+    // Old flow fallback
     const requestedUserType = req.body.userType;
     const users = sortUsersByRolePriority(await findUsersByPhone(phone));
     const selectedUser =
-      users.find((item) => item.userType === requestedUserType) ||
-      users[0];
+      users.find((item) => item.userType === requestedUserType) || users[0];
 
     if (!selectedUser) {
       return res.status(200).send({
@@ -235,7 +307,7 @@ const requestOtp = async (req, res) => {
           userType: item.userType,
           otpHash,
           expiresAt,
-        })
+        }).catch(() => {})
       )
     );
 
@@ -247,211 +319,271 @@ const requestOtp = async (req, res) => {
       roles: users.map((item) => item.userType),
       requiresRoleSelection: users.length > 1 && !requestedUserType,
       isRegistered: isProfileRegistered(selectedUser.user),
+      flow: "legacy",
     };
 
-    if (EXPOSE_TEST_OTP) {
-      response.testOtp = DEFAULT_TEST_OTP;
-    }
+    if (EXPOSE_TEST_OTP) response.testOtp = DEFAULT_TEST_OTP;
 
     return res.status(200).send(response);
   } catch (err) {
-    return res.status(500).send({
-      success: false,
-      message: err.message,
-    });
+    return res.status(500).send({ success: false, message: err.message });
   }
 };
+
+// ── OTP Verification ──────────────────────────────────────────────────────────
 
 const verifyOtp = async (req, res) => {
   try {
     const phone = normalizePhone(req.body.phone);
     const otp = String(req.body.otp || "").trim();
+    // For new flow: activeRole = "LABOUR" | "OWNER" | "CONTRACTOR"
+    const activeRole = req.body.activeRole;
     const requestedUserType = req.body.userType;
 
     if (phone.length !== 10 || !otp) {
-      return res.status(400).send({
-        success: false,
-        message: "Phone number and OTP are required",
-      });
+      return res.status(400).send({ success: false, message: "Phone number and OTP are required" });
     }
 
-    const otpWhere = { phone, verified: false };
-
-    if (requestedUserType) {
-      otpWhere.userType = requestedUserType;
-    }
-
-    let otpRecord = null;
-
-    if (requestedUserType) {
-      otpRecord = await AuthOtp.findOne({
-        where: otpWhere,
-        order: [["createdAt", "DESC"]],
-      });
-    } else {
-      const otpRecords = await AuthOtp.findAll({
-        where: otpWhere,
-        order: [["createdAt", "DESC"]],
-      });
-
-      otpRecord =
-        ROLE_PRIORITY.map((role) =>
-          otpRecords.find((record) => record.userType === role)
-        ).find(Boolean) ||
-        otpRecords[0] ||
-        null;
-    }
+    // Find the most recent unverified OTP for this phone
+    const otpRecord = await AuthOtp.findOne({
+      where: { phone, verifiedAt: null },
+      order: [["createdAt", "DESC"]],
+    });
 
     if (!otpRecord) {
-      return res.status(404).send({
-        success: false,
-        message: "OTP not found. Request a new OTP.",
-      });
+      return res.status(404).send({ success: false, message: "OTP not found. Request a new OTP." });
     }
 
     if (new Date(otpRecord.expiresAt).getTime() < Date.now()) {
-      return res.status(400).send({
-        success: false,
-        message: "OTP expired. Request a new OTP.",
-      });
+      return res.status(400).send({ success: false, message: "OTP expired. Request a new OTP." });
     }
 
     if (otpRecord.attempts >= 5) {
-      return res.status(429).send({
-        success: false,
-        message: "Too many attempts. Request a new OTP.",
-      });
+      return res.status(429).send({ success: false, message: "Too many attempts. Request a new OTP." });
     }
 
     if (!verifyOtpHash(otp, otpRecord.otpHash)) {
       await otpRecord.update({ attempts: otpRecord.attempts + 1 });
-      return res.status(400).send({
-        success: false,
-        message: "Invalid OTP",
+      return res.status(400).send({ success: false, message: "Invalid OTP" });
+    }
+
+    // New flow: user has a globalUser + userRoles, and activeRole is provided
+    const globalUser = await User.findOne({
+      where: { phone },
+      include: [{ model: db.userRole, as: "userRoles", required: false,
+        include: [{ model: db.appRole, as: "appRole" }] }],
+    });
+
+    if (globalUser && globalUser.userRoles && globalUser.userRoles.length > 0) {
+      const roles = globalUser.userRoles.map((ur) => ur.appRole?.code).filter(Boolean);
+      const selectedRole = activeRole || roles[0];
+
+      if (!roles.includes(selectedRole)) {
+        return res.status(400).send({
+          success: false,
+          message: `Role ${selectedRole} not available for this user. Available: ${roles.join(", ")}`,
+        });
+      }
+
+      await otpRecord.update({ verifiedAt: new Date() });
+      const { token } = await generateSession(globalUser.id, selectedRole);
+
+      return res.status(200).send({
+        success: true,
+        message: "Login successful",
+        token,
+        userId: globalUser.id,
+        activeRole: selectedRole,
+        roles,
+        user: { id: globalUser.id, name: globalUser.name, phone: globalUser.phone },
+        flow: "new",
       });
     }
 
-    const user = await getUserForRole(otpRecord.userType, otpRecord.userId);
+    // Old flow fallback — userType column no longer exists in authOtps; look up by phone
+    const effectiveUserType = requestedUserType || ROLE_TYPES.LABOUR;
+    const user = await getUserForRole(effectiveUserType, phone, true);
 
     if (!user) {
-      return res.status(404).send({
-        success: false,
-        message: "User not found",
-      });
+      return res.status(404).send({ success: false, message: "User not found" });
     }
 
-    const token = generateToken(user, otpRecord.userType);
-    await saveToken(user, token, otpRecord.userType);
-    await otpRecord.update({ verified: true });
+    await otpRecord.update({ verifiedAt: new Date() });
+    const token = generateToken(user, effectiveUserType);
+    await saveToken(user, token, effectiveUserType);
+
     const registeredUsers = sortUsersByRolePriority(await findUsersByPhone(phone));
 
     return res.status(200).send(buildAuthResponse({
       token,
       user,
-      userType: otpRecord.userType,
+      userType: effectiveUserType,
       roles: registeredUsers.map((item) => item.userType),
+      flow: "legacy",
     }));
   } catch (err) {
-    return res.status(500).send({
-      success: false,
-      message: err.message,
-    });
+    return res.status(500).send({ success: false, message: err.message });
   }
 };
 
-// Login
-const login = async (req, res) => {
+// ── Role Switch ───────────────────────────────────────────────────────────────
+
+const switchRole = async (req, res) => {
   try {
-    if (!req.body.otp) {
-      return res.status(400).send({
+    const { activeRole } = req.body;
+    if (!activeRole) {
+      return res.status(400).send({ success: false, message: "activeRole is required" });
+    }
+
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).send({ success: false, message: "Authentication required" });
+    }
+
+    const appRole = await db.appRole.findOne({ where: { code: activeRole, isActive: true } });
+    if (!appRole) {
+      return res.status(400).send({ success: false, message: `Invalid role: ${activeRole}` });
+    }
+
+    const userRole = await db.userRole.findOne({
+      where: { userId, roleId: appRole.id, profileStatus: "complete" },
+    });
+    if (!userRole) {
+      return res.status(403).send({
         success: false,
-        message: "Request an OTP before logging in",
+        message: `You do not have the ${activeRole} role`,
       });
     }
 
-    return verifyOtp(req, res);
-  } catch (err) {
-    return res.status(500).send({
-      success: false,
-      message: err.message,
+    // Revoke current session (new-flow only)
+    if (req.session) {
+      await req.session.update({ revokedAt: new Date() });
+    }
+
+    const { token } = await generateSession(userId, activeRole);
+
+    return res.status(200).send({
+      success: true,
+      message: `Switched to ${activeRole}`,
+      token,
+      activeRole,
     });
+  } catch (err) {
+    return res.status(500).send({ success: false, message: err.message });
   }
 };
 
-// Verify Token
+const login = async (req, res) => {
+  if (!req.body.otp) {
+    return res.status(400).send({ success: false, message: "Request an OTP before logging in" });
+  }
+  return verifyOtp(req, res);
+};
+
+// ── Token Verification ────────────────────────────────────────────────────────
+// Checks sessions table first (new flow), falls back to mobile_token_maps (old flow).
+
 const verifyToken = async (req, res, next) => {
   try {
     const token = extractTokenFromHeader(req.header("Authorization"));
 
     if (!token) {
-      return res.status(401).send({
-        success: false,
-        message: "Token required",
-      });
+      return res.status(401).send({ success: false, message: "Token required" });
     }
 
-    const tokenRecord = await TokenDetails.findOne({
-      where: { token },
-    });
+    let decoded;
+    try {
+      decoded = jwt.verify(token, TOKEN_SECRET);
+    } catch (e) {
+      return res.status(401).send({ success: false, message: "Session expired. Please log in again." });
+    }
+
+    // New flow: session-based JWT has sessionId field
+    if (decoded.sessionId) {
+      const tokenHash = hashToken(token);
+      const session = await db.session.findOne({
+        where: { tokenHash, revokedAt: null },
+      });
+
+      if (!session || session.expiresAt < new Date()) {
+        return res.status(401).send({ success: false, message: "Session expired or revoked." });
+      }
+
+      req.user = decoded;
+      req.session = session;
+      return next();
+    }
+
+    // Old flow: check mobile_token_maps
+    const tokenRecord = await TokenDetails.findOne({ where: { token } });
 
     if (!tokenRecord) {
-      return res.status(401).send({
-        success: false,
-        message: "Invalid token",
-      });
+      return res.status(401).send({ success: false, message: "Invalid token" });
     }
 
-    req.user = jwt.verify(token, TOKEN_SECRET);
+    req.user = decoded;
     req.tokenRecord = tokenRecord;
-
     next();
   } catch (err) {
-    return res.status(401).send({
-      success: false,
-      message: "Session expired. Please log in again.",
-    });
+    return res.status(401).send({ success: false, message: "Session expired. Please log in again." });
   }
 };
 
-// Logout
+// ── Logout ────────────────────────────────────────────────────────────────────
+
 const logout = async (req, res) => {
   try {
     const token = extractTokenFromHeader(req.header("Authorization"));
 
     if (!token) {
-      return res.status(400).send({
-        success: false,
-        message: "Token not found",
-      });
+      return res.status(400).send({ success: false, message: "Token not found" });
     }
 
-    await TokenDetails.destroy({
-      where: { token },
-    });
+    // New flow: revoke session
+    if (req.session) {
+      await req.session.update({ revokedAt: new Date() });
+    } else {
+      // Old flow: destroy token record
+      await TokenDetails.destroy({ where: { token } });
+    }
 
-    return res.status(200).send({
-      success: true,
-      message: "Logout successful",
-    });
+    return res.status(200).send({ success: true, message: "Logout successful" });
   } catch (err) {
-    return res.status(500).send({
-      success: false,
-      message: err.message,
-    });
+    return res.status(500).send({ success: false, message: err.message });
   }
 };
+
+// ── Check Phone ───────────────────────────────────────────────────────────────
 
 const checkPhone = async (req, res) => {
   try {
     const phone = normalizePhone(req.body.phone);
 
     if (phone.length !== 10) {
-      return res.status(400).send({
-        success: false,
-        message: "Enter a 10-digit mobile number",
+      return res.status(400).send({ success: false, message: "Enter a 10-digit mobile number" });
+    }
+
+    // New flow check
+    const globalUser = await User.findOne({
+      where: { phone },
+      include: [{ model: db.userRole, as: "userRoles", required: false,
+        include: [{ model: db.appRole, as: "appRole" }] }],
+    });
+
+    if (globalUser && globalUser.userRoles && globalUser.userRoles.length > 0) {
+      const roles = globalUser.userRoles.map((ur) => ur.appRole?.code).filter(Boolean);
+      return res.status(200).send({
+        success: true,
+        isRegistered: true,
+        phone,
+        userId: globalUser.id,
+        roles,
+        flow: "new",
+        message: "User is already registered",
       });
     }
 
+    // Old flow fallback
     const users = sortUsersByRolePriority(await findUsersByPhone(phone));
 
     if (users.length === 0) {
@@ -472,6 +604,7 @@ const checkPhone = async (req, res) => {
       userId: primary.user.id,
       registeredFrom: primary.user.registeredFrom || primary.userType,
       roles: users.map((item) => item.userType),
+      flow: "legacy",
       message: "User is already registered",
     });
   } catch (err) {
@@ -487,5 +620,7 @@ module.exports = {
   logout,
   checkPhone,
   generateToken,
+  generateSession,
   saveToken,
+  switchRole,
 };

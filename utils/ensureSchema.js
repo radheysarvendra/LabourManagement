@@ -98,6 +98,9 @@ const ensureSchema = async (db) => {
   const categorySkillColumns = {
     isActive: { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
   };
+  const labourSkillColumns = {
+    labourUserId: { type: db.Sequelize.INTEGER, allowNull: true },
+  };
   const orderColumns = {
     categoryId: { type: db.Sequelize.INTEGER, allowNull: true },
     skillId: { type: db.Sequelize.INTEGER, allowNull: true },
@@ -131,9 +134,9 @@ const ensureSchema = async (db) => {
 
   // Add personal/location columns to users (moved from labours/owners)
   const userPersonalColumns = {
-    age:         { type: db.Sequelize.INTEGER, allowNull: true },
-    gender:      { type: db.Sequelize.ENUM("male", "female"), allowNull: true },
-    city:        { type: db.Sequelize.STRING, allowNull: true },
+    age:          { type: db.Sequelize.INTEGER, allowNull: true },
+    gender:       { type: db.Sequelize.STRING(10), allowNull: true },
+    city:         { type: db.Sequelize.STRING, allowNull: true },
     village:     { type: db.Sequelize.STRING, allowNull: true },
     district:    { type: db.Sequelize.STRING, allowNull: true },
     state:       { type: db.Sequelize.STRING, allowNull: true },
@@ -145,11 +148,19 @@ const ensureSchema = async (db) => {
     postOfficeId:{ type: db.Sequelize.INTEGER, allowNull: true },
     area:        { type: db.Sequelize.STRING, allowNull: true },
     address:     { type: db.Sequelize.TEXT, allowNull: true },
-    isActive:    { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
+    isActive:       { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
+    accountStatus:  { type: db.Sequelize.STRING(20), allowNull: false, defaultValue: "active" },
+    deletedAt:      { type: db.Sequelize.DATE, allowNull: true },
   };
   for (const [col, def] of Object.entries(userPersonalColumns)) {
     await ensureColumn(queryInterface, "users", col, def);
   }
+
+  await ensureColumn(queryInterface, "orders", "createdByUserId", {
+    type: db.Sequelize.INTEGER,
+    allowNull: true,
+    references: { model: "users", key: "id" },
+  });
 
   // Copy personal/location data from labours → users (fill nulls only)
   try {
@@ -157,7 +168,7 @@ const ensureSchema = async (db) => {
       UPDATE "users" u
       SET
         age          = COALESCE(u.age,         l.age),
-        gender       = COALESCE(u.gender,      l.gender),
+        gender       = COALESCE(u.gender, l.gender::text),
         "profileImage" = COALESCE(u."profileImage", l."profileImage"),
         city         = COALESCE(u.city,        l.city),
         village      = COALESCE(u.village,     l.village),
@@ -185,7 +196,7 @@ const ensureSchema = async (db) => {
       UPDATE "users" u
       SET
         age          = COALESCE(u.age,         o.age),
-        gender       = COALESCE(u.gender,      o.gender),
+        gender       = COALESCE(u.gender, o.gender::text),
         "profileImage" = COALESCE(u."profileImage", o."profileImage"),
         city         = COALESCE(u.city,        o.city),
         village      = COALESCE(u.village,     o.village),
@@ -252,6 +263,28 @@ const ensureSchema = async (db) => {
     console.warn("workAssignments NOT NULL drop skipped:", e.message);
   }
 
+  // convert users.gender from ENUM → VARCHAR so it matches the new STRING model
+  try {
+    await db.sequelize.query(`ALTER TABLE "users" ALTER COLUMN "gender" TYPE VARCHAR(10) USING gender::text`);
+    console.log("Converted users.gender ENUM → VARCHAR");
+  } catch (e) {
+    // already VARCHAR or column doesn't exist — both are fine
+  }
+
+  // convert workAttendances.status and markedByType from ENUM → VARCHAR
+  try {
+    await db.sequelize.query(`ALTER TABLE "workAttendances" ALTER COLUMN "status" TYPE VARCHAR(20) USING status::text`);
+    console.log("Converted workAttendances.status ENUM → VARCHAR");
+  } catch (e) {
+    // already VARCHAR, column doesn't exist, or no rows — all fine
+  }
+  try {
+    await db.sequelize.query(`ALTER TABLE "workAttendances" ALTER COLUMN "markedByType" TYPE VARCHAR(20) USING "markedByType"::text`);
+    console.log("Converted workAttendances.markedByType ENUM → VARCHAR");
+  } catch (e) {
+    // already VARCHAR or column doesn't exist — fine
+  }
+
   await ensureEnumValues(db.sequelize, "enum_authOtps_userType", userTypeEnumValues);
   await ensureEnumValues(db.sequelize, "enum_mobile_token_maps_userType", userTypeEnumValues);
   await ensureEnumValues(db.sequelize, "enum_orders_status", ["assigned", "confirmed"]);
@@ -275,6 +308,10 @@ const ensureSchema = async (db) => {
 
   for (const [columnName, definition] of Object.entries(categorySkillColumns)) {
     await ensureColumn(queryInterface, "categorySkills", columnName, definition);
+  }
+
+  for (const [columnName, definition] of Object.entries(labourSkillColumns)) {
+    await ensureColumn(queryInterface, "labourSkills", columnName, definition);
   }
 
   for (const [columnName, definition] of Object.entries(orderColumns)) {
@@ -330,6 +367,7 @@ const ensureSchema = async (db) => {
   await ensureIndex(queryInterface, "labours", ["labourCode"], "idx_labours_labour_code");
   await ensureIndex(queryInterface, "labourSkills", ["skillId"], "idx_labour_skills_skill_id");
   await ensureIndex(queryInterface, "labourSkills", ["labourId"], "idx_labour_skills_labour_id");
+  await ensureIndex(queryInterface, "labourSkills", ["labourUserId"], "idx_labour_skills_labour_user_id");
   await ensureIndex(queryInterface, "orders", ["requiredDate"], "idx_orders_required_date");
   await ensureIndex(queryInterface, "orders", ["categoryId"], "idx_orders_category_id");
   await ensureIndex(queryInterface, "orders", ["skillId"], "idx_orders_skill_id");
@@ -349,6 +387,367 @@ const ensureSchema = async (db) => {
   } catch (e) {
     console.warn("Could not add unique index on workAssignmentLabours (duplicate rows may exist):", e.message);
   }
+
+  // ── NEW SCHEMA TABLES ────────────────────────────────────────────────────────
+
+  await ensureTable(db.sequelize, "appRoles", `
+    CREATE TABLE IF NOT EXISTS "appRoles" (
+      id SERIAL PRIMARY KEY,
+      code VARCHAR(50) NOT NULL UNIQUE,
+      name VARCHAR(255) NOT NULL,
+      "isActive" BOOLEAN NOT NULL DEFAULT TRUE,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await ensureTable(db.sequelize, "userRoles", `
+    CREATE TABLE IF NOT EXISTS "userRoles" (
+      "userId" INTEGER NOT NULL REFERENCES "users"(id) ON DELETE CASCADE,
+      "roleId" INTEGER NOT NULL REFERENCES "appRoles"(id) ON DELETE CASCADE,
+      "profileStatus" VARCHAR(20) NOT NULL DEFAULT 'pending',
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      PRIMARY KEY ("userId", "roleId")
+    )
+  `);
+
+  await ensureTable(db.sequelize, "labourProfiles", `
+    CREATE TABLE IF NOT EXISTS "labourProfiles" (
+      "userId" INTEGER PRIMARY KEY REFERENCES "users"(id) ON DELETE CASCADE,
+      "labourCode" VARCHAR(255) UNIQUE,
+      "experienceYears" INTEGER NOT NULL DEFAULT 0,
+      "isAvailable" BOOLEAN NOT NULL DEFAULT TRUE,
+      "verificationStatus" VARCHAR(20) NOT NULL DEFAULT 'pending',
+      "verifiedByAdminId" INTEGER,
+      "verifiedAt" TIMESTAMP,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "deletedAt" TIMESTAMP
+    )
+  `);
+
+  await ensureTable(db.sequelize, "contractorProfiles", `
+    CREATE TABLE IF NOT EXISTS "contractorProfiles" (
+      "userId" INTEGER PRIMARY KEY REFERENCES "users"(id) ON DELETE CASCADE,
+      "contractorCode" VARCHAR(255) UNIQUE,
+      "companyName" VARCHAR(255),
+      "gstNumber" VARCHAR(20),
+      "experienceYears" INTEGER NOT NULL DEFAULT 0,
+      "isAvailable" BOOLEAN NOT NULL DEFAULT TRUE,
+      "verificationStatus" VARCHAR(20) NOT NULL DEFAULT 'pending',
+      "verifiedByAdminId" INTEGER,
+      "verifiedAt" TIMESTAMP,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "deletedAt" TIMESTAMP
+    )
+  `);
+
+  await ensureTable(db.sequelize, "contractorSkills", `
+    CREATE TABLE IF NOT EXISTS "contractorSkills" (
+      "contractorUserId" INTEGER NOT NULL REFERENCES "contractorProfiles"("userId") ON DELETE CASCADE,
+      "skillId" INTEGER NOT NULL REFERENCES "skills"(id) ON DELETE CASCADE,
+      "experienceYears" INTEGER NOT NULL DEFAULT 0,
+      rate DECIMAL(12, 2),
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      PRIMARY KEY ("contractorUserId", "skillId")
+    )
+  `);
+
+  await ensureTable(db.sequelize, "contractorCategories", `
+    CREATE TABLE IF NOT EXISTS "contractorCategories" (
+      "contractorUserId" INTEGER NOT NULL REFERENCES "contractorProfiles"("userId") ON DELETE CASCADE,
+      "categoryId" INTEGER NOT NULL REFERENCES "categories"(id) ON DELETE CASCADE,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      PRIMARY KEY ("contractorUserId", "categoryId")
+    )
+  `);
+
+  await ensureTable(db.sequelize, "sessions", `
+    CREATE TABLE IF NOT EXISTS "sessions" (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      "userId" INTEGER NOT NULL REFERENCES "users"(id) ON DELETE CASCADE,
+      "activeRoleId" INTEGER NOT NULL REFERENCES "appRoles"(id),
+      "tokenHash" VARCHAR(64) NOT NULL UNIQUE,
+      "deviceId" VARCHAR(255),
+      "expiresAt" TIMESTAMP NOT NULL,
+      "revokedAt" TIMESTAMP,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await ensureTable(db.sequelize, "orderAssignments", `
+    CREATE TABLE IF NOT EXISTS "orderAssignments" (
+      id SERIAL PRIMARY KEY,
+      "orderId" INTEGER NOT NULL REFERENCES "orders"(id) ON DELETE CASCADE,
+      "providerUserId" INTEGER NOT NULL,
+      "providerRoleId" INTEGER NOT NULL,
+      "assignmentStatus" VARCHAR(20) NOT NULL DEFAULT 'assigned',
+      "adminStatus" VARCHAR(20) NOT NULL DEFAULT 'pending',
+      "assignedByAdminId" INTEGER,
+      "assignedAt" TIMESTAMP,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "deletedAt" TIMESTAMP,
+      UNIQUE ("orderId", "providerUserId", "providerRoleId")
+    )
+  `);
+
+  await ensureTable(db.sequelize, "labourAssignmentDetails", `
+    CREATE TABLE IF NOT EXISTS "labourAssignmentDetails" (
+      "assignmentId" INTEGER PRIMARY KEY REFERENCES "orderAssignments"(id) ON DELETE CASCADE,
+      "skillId" INTEGER REFERENCES "skills"(id),
+      "dailyWage" DECIMAL(10, 2),
+      "startDate" DATE,
+      "endDate" DATE,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await ensureTable(db.sequelize, "contractorAssignmentDetails", `
+    CREATE TABLE IF NOT EXISTS "contractorAssignmentDetails" (
+      "assignmentId" INTEGER PRIMARY KEY REFERENCES "orderAssignments"(id) ON DELETE CASCADE,
+      "categoryId" INTEGER REFERENCES "categories"(id),
+      "contractFee" DECIMAL(12, 2),
+      "startDate" DATE,
+      "endDate" DATE,
+      "paymentTermType" VARCHAR(20),
+      "paymentTerms" TEXT,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await ensureTable(db.sequelize, "contractorMilestones", `
+    CREATE TABLE IF NOT EXISTS "contractorMilestones" (
+      id SERIAL PRIMARY KEY,
+      "assignmentId" INTEGER NOT NULL REFERENCES "orderAssignments"(id) ON DELETE CASCADE,
+      title VARCHAR(255) NOT NULL,
+      description TEXT,
+      amount DECIMAL(10, 2),
+      "dueDate" DATE,
+      "milestoneStatus" VARCHAR(20) NOT NULL DEFAULT 'pending',
+      "completedAt" TIMESTAMP,
+      "verifiedAt" TIMESTAMP,
+      "verifiedByUserId" INTEGER,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // Enforce normalized identity and assignment integrity at database level.
+  await db.sequelize.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_order_assignment_user_role') THEN
+        ALTER TABLE "orderAssignments"
+          ADD CONSTRAINT "fk_order_assignment_user_role"
+          FOREIGN KEY ("providerUserId", "providerRoleId")
+          REFERENCES "userRoles" ("userId", "roleId");
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_session_user_role') THEN
+        ALTER TABLE "sessions"
+          ADD CONSTRAINT "fk_session_user_role"
+          FOREIGN KEY ("userId", "activeRoleId")
+          REFERENCES "userRoles" ("userId", "roleId");
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_user_account_status') THEN
+        ALTER TABLE "users" ADD CONSTRAINT "ck_user_account_status"
+          CHECK ("accountStatus" IN ('active', 'suspended', 'deleted'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_user_role_profile_status') THEN
+        ALTER TABLE "userRoles" ADD CONSTRAINT "ck_user_role_profile_status"
+          CHECK ("profileStatus" IN ('pending', 'complete', 'suspended'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_order_assignment_status') THEN
+        ALTER TABLE "orderAssignments" ADD CONSTRAINT "ck_order_assignment_status"
+          CHECK ("assignmentStatus" IN ('pending','assigned','accepted','in_progress','completed','rejected','cancelled'));
+      END IF;
+    END $$;
+  `);
+
+  await db.sequelize.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "uq_labour_skills_user_skill"
+      ON "labourSkills" ("labourUserId", "skillId")
+      WHERE "labourUserId" IS NOT NULL
+  `);
+  await db.sequelize.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "uq_work_attendance_assignment_date"
+      ON "workAttendances" ("assignmentId", "attendanceDate")
+      WHERE "assignmentId" IS NOT NULL
+  `);
+
+  // Add new columns to authOtps (verifiedAt replaces old boolean verified; attempts is new)
+  const authOtpNewColumns = {
+    verifiedAt: { type: db.Sequelize.DATE, allowNull: true },
+    attempts:   { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 0 },
+  };
+  for (const [col, def] of Object.entries(authOtpNewColumns)) {
+    await ensureColumn(queryInterface, "authOtps", col, def);
+  }
+
+  // Add new columns to workAttendances (new-flow columns alongside old-flow)
+  const workAttendanceNewColumns = {
+    assignmentId:    { type: db.Sequelize.INTEGER, allowNull: true },
+    attendanceStatus:{ type: db.Sequelize.STRING(20), allowNull: true, defaultValue: "present" },
+    markedByUserId:  { type: db.Sequelize.INTEGER, allowNull: true },
+    note:            { type: db.Sequelize.TEXT, allowNull: true },
+  };
+  for (const [col, def] of Object.entries(workAttendanceNewColumns)) {
+    await ensureColumn(queryInterface, "workAttendances", col, def);
+  }
+
+  // Seed default app roles
+  try {
+    await db.sequelize.query(`
+      INSERT INTO "appRoles" (code, name, "createdAt", "updatedAt")
+      VALUES
+        ('LABOUR', 'Labour', NOW(), NOW()),
+        ('OWNER', 'Owner', NOW(), NOW()),
+        ('CONTRACTOR', 'Contractor', NOW(), NOW())
+      ON CONFLICT (code) DO NOTHING
+    `);
+    console.log("Seeded default appRoles");
+  } catch (e) {
+    console.warn("appRoles seeding skipped:", e.message);
+  }
+
+  // Migrate existing labours → labourProfiles
+  try {
+    await db.sequelize.query(`
+      INSERT INTO "labourProfiles" ("userId", "labourCode", "experienceYears", "isAvailable", "verificationStatus", "createdAt", "updatedAt")
+      SELECT
+        l."userId",
+        l."labourCode",
+        COALESCE(l."experienceYears", 0),
+        COALESCE(l."isAvailable", true),
+        CASE WHEN COALESCE(l."isVerified", false) THEN 'verified' ELSE 'pending' END,
+        l."createdAt",
+        l."updatedAt"
+      FROM "labours" l
+      WHERE l."userId" IS NOT NULL
+        AND (l."registeredFrom" = 'labour' OR l."registeredFrom" IS NULL)
+      ON CONFLICT ("userId") DO NOTHING
+    `);
+    console.log("Migrated labours → labourProfiles");
+  } catch (e) {
+    console.warn("labours → labourProfiles migration skipped:", e.message);
+  }
+
+  // Migrate existing owners (registeredFrom=contractor) → contractorProfiles
+  try {
+    await db.sequelize.query(`
+      INSERT INTO "contractorProfiles" ("userId", "experienceYears", "isAvailable", "verificationStatus", "createdAt", "updatedAt")
+      SELECT
+        o."userId",
+        0,
+        COALESCE(o."isActive", true),
+        'pending',
+        o."createdAt",
+        o."updatedAt"
+      FROM "owners" o
+      WHERE o."userId" IS NOT NULL
+        AND o."registeredFrom" = 'contractor'
+      ON CONFLICT ("userId") DO NOTHING
+    `);
+    console.log("Migrated contractor owners → contractorProfiles");
+  } catch (e) {
+    console.warn("owners → contractorProfiles migration skipped:", e.message);
+  }
+
+  // Seed userRoles for existing labours
+  try {
+    await db.sequelize.query(`
+      INSERT INTO "userRoles" ("userId", "roleId", "profileStatus", "createdAt")
+      SELECT l."userId", ar.id, 'complete', NOW()
+      FROM "labours" l
+      JOIN "appRoles" ar ON ar.code = 'LABOUR'
+      WHERE l."userId" IS NOT NULL
+        AND (l."registeredFrom" = 'labour' OR l."registeredFrom" IS NULL)
+      ON CONFLICT ("userId", "roleId") DO NOTHING
+    `);
+    console.log("Seeded userRoles for labours");
+  } catch (e) {
+    console.warn("labours → userRoles seeding skipped:", e.message);
+  }
+
+  // Seed userRoles for existing owners (registeredFrom=owner)
+  try {
+    await db.sequelize.query(`
+      INSERT INTO "userRoles" ("userId", "roleId", "profileStatus", "createdAt")
+      SELECT o."userId", ar.id, 'complete', NOW()
+      FROM "owners" o
+      JOIN "appRoles" ar ON ar.code = 'OWNER'
+      WHERE o."userId" IS NOT NULL
+        AND o."registeredFrom" = 'owner'
+      ON CONFLICT ("userId", "roleId") DO NOTHING
+    `);
+    console.log("Seeded userRoles for owners");
+  } catch (e) {
+    console.warn("owners → userRoles seeding skipped:", e.message);
+  }
+
+  // Seed userRoles for existing contractors (registeredFrom=contractor)
+  try {
+    await db.sequelize.query(`
+      INSERT INTO "userRoles" ("userId", "roleId", "profileStatus", "createdAt")
+      SELECT o."userId", ar.id, 'complete', NOW()
+      FROM "owners" o
+      JOIN "appRoles" ar ON ar.code = 'CONTRACTOR'
+      WHERE o."userId" IS NOT NULL
+        AND o."registeredFrom" = 'contractor'
+      ON CONFLICT ("userId", "roleId") DO NOTHING
+    `);
+    console.log("Seeded userRoles for contractors");
+  } catch (e) {
+    console.warn("contractors → userRoles seeding skipped:", e.message);
+  }
+
+  // Migrate contractorSkills from owners (skillId + categoryId)
+  try {
+    await db.sequelize.query(`
+      INSERT INTO "contractorSkills" ("contractorUserId", "skillId", "createdAt", "updatedAt")
+      SELECT o."userId", o."skillId", NOW(), NOW()
+      FROM "owners" o
+      WHERE o."userId" IS NOT NULL
+        AND o."registeredFrom" = 'contractor'
+        AND o."skillId" IS NOT NULL
+        AND EXISTS (SELECT 1 FROM "contractorProfiles" cp WHERE cp."userId" = o."userId")
+      ON CONFLICT ("contractorUserId", "skillId") DO NOTHING
+    `);
+    console.log("Migrated contractorSkills from owners");
+  } catch (e) {
+    console.warn("contractorSkills migration skipped:", e.message);
+  }
+
+  // Migrate contractorCategories from owners (categoryId)
+  try {
+    await db.sequelize.query(`
+      INSERT INTO "contractorCategories" ("contractorUserId", "categoryId", "createdAt", "updatedAt")
+      SELECT o."userId", o."categoryId", NOW(), NOW()
+      FROM "owners" o
+      WHERE o."userId" IS NOT NULL
+        AND o."registeredFrom" = 'contractor'
+        AND o."categoryId" IS NOT NULL
+        AND EXISTS (SELECT 1 FROM "contractorProfiles" cp WHERE cp."userId" = o."userId")
+      ON CONFLICT ("contractorUserId", "categoryId") DO NOTHING
+    `);
+    console.log("Migrated contractorCategories from owners");
+  } catch (e) {
+    console.warn("contractorCategories migration skipped:", e.message);
+  }
+
+  await ensureIndex(queryInterface, "sessions", ["tokenHash"], "idx_sessions_token_hash");
+  await ensureIndex(queryInterface, "sessions", ["userId"], "idx_sessions_user_id");
+  await ensureIndex(queryInterface, "orderAssignments", ["orderId"], "idx_order_assignments_order_id");
+  await ensureIndex(queryInterface, "orderAssignments", ["providerUserId"], "idx_order_assignments_provider");
+  await ensureIndex(queryInterface, "labourProfiles", ["isAvailable"], "idx_labour_profiles_available");
+  await ensureIndex(queryInterface, "contractorProfiles", ["isAvailable"], "idx_contractor_profiles_available");
+  await ensureIndex(queryInterface, "contractorSkills", ["skillId"], "idx_contractor_skills_skill_id");
+  await ensureIndex(queryInterface, "contractorCategories", ["categoryId"], "idx_contractor_categories_category_id");
 };
 
 module.exports = {

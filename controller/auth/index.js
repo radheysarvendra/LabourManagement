@@ -14,6 +14,7 @@ const completeOwnerProfile = async (req, res) => {
     const result = await authService.completeOwnerProfileService({
       userId: req.user?.userId || req.user?.id,
       userType: req.user?.type || req.user?.userType,
+      isSessionAuth: Boolean(req.user?.sessionId),
       ...req.body,
     });
     return res.status(result.statusCode).send(result.body);
@@ -27,6 +28,7 @@ const completeLabourProfile = async (req, res) => {
     const result = await authService.completeLabourProfileService({
       userId: req.user?.userId || req.user?.id,
       userType: req.user?.type || req.user?.userType,
+      isSessionAuth: Boolean(req.user?.sessionId),
       ...req.body,
     });
     return res.status(result.statusCode).send(result.body);

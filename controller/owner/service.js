@@ -165,11 +165,50 @@ const createOwnerService = async (payload) => {
   return buildOwnerSession(data, sessionUserType, msg.OWNER_CREATED_SUCCESSFULLY, 201);
 };
 
-const getAllOwnersService = async () => {
-  const data = await Owner.findAll({ include: ownerInclude, order: [["id", "DESC"]] });
+const getAllOwnersService = async ({ page = 1, limit = 20, search = "" } = {}) => {
+  const { Op } = db.Sequelize;
+  const pageNumber = Math.max(Number(page) || 1, 1);
+  const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const offset = (pageNumber - 1) * pageLimit;
+  const term = String(search || "").trim();
+  const where = {
+    registeredFrom: { [Op.in]: [ROLE_TYPES.OWNER, ROLE_TYPES.CONTRACTOR_CUSTOMER] },
+  };
+
+  if (term) {
+    where[Op.or] = [
+      { name: { [Op.iLike]: `%${term}%` } },
+      { phone: { [Op.iLike]: `%${term}%` } },
+      db.Sequelize.where(
+        db.Sequelize.cast(db.Sequelize.col("workType"), "text"),
+        { [Op.iLike]: `%${term}%` }
+      ),
+      { "$user.district$": { [Op.iLike]: `%${term}%` } },
+      { "$user.state$": { [Op.iLike]: `%${term}%` } },
+      { "$user.area$": { [Op.iLike]: `%${term}%` } },
+    ];
+  }
+
+  const result = await Owner.findAndCountAll({
+    where,
+    include: ownerInclude,
+    distinct: true,
+    subQuery: false,
+    order: [["id", "DESC"]],
+    offset,
+    limit: pageLimit,
+  });
+
   return {
     statusCode: 200,
-    body: { success: true, total: data.length, data: data.map(mapOwnerWithUser) },
+    body: {
+      success: true,
+      total: result.count,
+      page: pageNumber,
+      limit: pageLimit,
+      totalPages: Math.ceil(result.count / pageLimit),
+      data: result.rows.map(mapOwnerWithUser),
+    },
   };
 };
 
