@@ -580,6 +580,20 @@ const ensureSchema = async (db) => {
       WHERE "assignmentId" IS NOT NULL
   `);
 
+  // Drop NOT NULL constraints on authOtps columns that the new model no longer provides
+  try {
+    await db.sequelize.query(`ALTER TABLE "authOtps" ALTER COLUMN "userType" DROP NOT NULL`);
+  } catch (e) { /* already nullable */ }
+  try {
+    await db.sequelize.query(`ALTER TABLE "authOtps" ALTER COLUMN "userId" DROP NOT NULL`);
+  } catch (e) { /* already nullable */ }
+
+  // age and gender now live in users table; keep copies in labours/owners but make nullable
+  try {
+    await db.sequelize.query(`ALTER TABLE "labours" ALTER COLUMN "age" DROP NOT NULL`);
+    await db.sequelize.query(`ALTER TABLE "labours" ALTER COLUMN "gender" DROP NOT NULL`);
+  } catch (e) { /* already nullable */ }
+
   // Add new columns to authOtps (verifiedAt replaces old boolean verified; attempts is new)
   const authOtpNewColumns = {
     verifiedAt: { type: db.Sequelize.DATE, allowNull: true },

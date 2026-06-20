@@ -37,7 +37,6 @@ module.exports = (sequelize, DataTypes) => {
   }, {
     tableName: "authOtps",
     timestamps: true,
-    updatedAt: false,
     indexes: [
       { fields: ["phone"], name: "idx_auth_otps_phone" },
       { fields: ["phone", "verifiedAt"], name: "idx_auth_otps_phone_verified" },
