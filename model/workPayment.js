@@ -63,6 +63,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: "pending",
     },
+    platformFee: {
+      type: DataTypes.FLOAT,
+      allowNull: false,
+      defaultValue: 0,
+    },
     paidAt: {
       type: DataTypes.DATE,
       allowNull: true,

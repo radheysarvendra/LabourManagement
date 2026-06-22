@@ -12,17 +12,19 @@ const AuthOtp = db.authOtp;
 
 const TOKEN_SECRET = config.SECRET_KEY;
 const DEFAULT_TEST_OTP = process.env.DEFAULT_TEST_OTP || "1234";
-const EXPOSE_TEST_OTP = process.env.EXPOSE_TEST_OTP === "true" || process.env.NODE_ENV !== "production";
 const OTP_EXPIRY_MINUTES = Number(process.env.OTP_EXPIRY_MINUTES || 10);
 const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || "";
+// Show OTP in response only when not using real SMS (no key = test mode)
+const EXPOSE_TEST_OTP = process.env.EXPOSE_TEST_OTP === "true" || !FAST2SMS_API_KEY;
 
 const generateOtp = () => {
-  if (process.env.NODE_ENV !== "production") return DEFAULT_TEST_OTP;
-  return String(Math.floor(100000 + Math.random() * 900000)); // 6-digit random
+  // Only generate random OTP when SMS is actually configured — otherwise use test OTP
+  if (FAST2SMS_API_KEY) return String(Math.floor(100000 + Math.random() * 900000));
+  return DEFAULT_TEST_OTP;
 };
 
 const sendSmsOtp = async (phone, otp) => {
-  if (!FAST2SMS_API_KEY || process.env.NODE_ENV !== "production") return;
+  if (!FAST2SMS_API_KEY) return;
   try {
     const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${FAST2SMS_API_KEY}&variables_values=${otp}&route=otp&numbers=${phone}`;
     const https = require("https");

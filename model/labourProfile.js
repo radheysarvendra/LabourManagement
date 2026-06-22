@@ -34,6 +34,23 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATE,
       allowNull: true,
     },
+    // Verification documents submitted by labour
+    aadharNumber: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+    },
+    documentUrl: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    rejectionReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    verificationSubmittedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   }, {
     tableName: "labourProfiles",
     timestamps: true,

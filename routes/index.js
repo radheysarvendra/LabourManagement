@@ -14,6 +14,10 @@ const authController = require("../middleware/auth/index");
 const newAuthController = require("../controller/auth/index");
 const roleController = require("../controller/Permission_roles/index");
 const adminController = require("../controller/admin/index");
+const ratingController = require("../controller/rating/index");
+const orderPaymentController   = require("../controller/orderPayment/index");
+const contractorLeadController      = require("../controller/contractorLead/index");
+const labourVerificationController  = require("../controller/labourVerification/index");
 const { verifyAdminToken, allowAdminModule } = require("../middleware/adminAuth");
 const { verifyToken } = require("../middleware/auth");
 
@@ -136,6 +140,75 @@ router.put("/api/work-assignments/:id/attendance/:attendanceId", verifyToken, wo
 router.post("/api/work-assignments/:id/payments/generate", verifyToken, workAssignmentController.generatePayment);
 router.get("/api/work-assignments/:id/payments", verifyToken, workAssignmentController.getPayments);
 router.put("/api/work-assignments/:id/payments/:paymentId/status", verifyToken, workAssignmentController.updatePaymentStatus);
+// ── Labour Verification ───────────────────────────────────────────────────────
+router.post("/api/labour/verification/submit",   verifyToken, labourVerificationController.submitVerification);
+router.get("/api/labour/verification/status",    verifyToken, labourVerificationController.getMyVerificationStatus);
+// Admin
+router.get("/api/admin/labour-verifications",                       verifyAdminToken, labourVerificationController.getVerifications);
+router.put("/api/admin/labour-verifications/:userId/approve",       verifyAdminToken, labourVerificationController.approveVerification);
+router.put("/api/admin/labour-verifications/:userId/reject",        verifyAdminToken, labourVerificationController.rejectVerification);
+router.put("/api/admin/labour-verifications/:userId/revoke",        verifyAdminToken, labourVerificationController.revokeVerification);
+
+// ── Contractor Lead System ────────────────────────────────────────────────────
+router.post("/api/contractor-leads",                   verifyToken, contractorLeadController.createLead);
+router.get("/api/contractor-leads",                    verifyToken, contractorLeadController.getMyLeads);
+router.get("/api/contractor-leads/:id",                verifyToken, contractorLeadController.getLeadById);
+router.put("/api/contractor-leads/:id/pay-lead-fee",   verifyToken, contractorLeadController.payLeadFee);
+router.put("/api/contractor-leads/:id/pay-service-fee",verifyToken, contractorLeadController.payServiceFee);
+// Admin
+router.get("/api/admin/contractor-leads",                     verifyAdminToken, contractorLeadController.getAllLeads);
+router.put("/api/admin/contractor-leads/:id/waive-service-fee", verifyAdminToken, contractorLeadController.waiveServiceFee);
+
+// ── Customer Order Payment (service fee + 30/40/30 milestones) ───────────────
+router.post("/api/orders/:orderId/payment/initiate",          verifyToken, orderPaymentController.initiateOrderPayment);
+router.get("/api/orders/:orderId/payment",                    verifyToken, orderPaymentController.getOrderPayment);
+router.put("/api/orders/:orderId/payment/:milestoneId/pay",   verifyToken, orderPaymentController.payMilestone);
+router.put("/api/orders/:orderId/payment/refund-before-work", verifyToken, orderPaymentController.refundBeforeWork);
+// Admin
+router.get("/api/admin/order-payments", verifyAdminToken, orderPaymentController.getAllOrderPayments);
+
+// ── Contractor fee tiers (public) ────────────────────────────────────────────
+router.get("/api/platform-fees/contractor-tiers", (req, res) => {
+  res.status(200).json({
+    success: true,
+    leadFees: [
+      { leadSize: "small",  projectValueUpTo: 50000,   leadFee: 100 },
+      { leadSize: "medium", projectValueUpTo: 200000,  leadFee: 200 },
+      { leadSize: "large",  projectValueUpTo: null,    leadFee: 500 },
+    ],
+    serviceFees: [
+      { projectValueUpTo: 50000,   serviceFeePercent: 5 },
+      { projectValueUpTo: 200000,  serviceFeePercent: 3 },
+      { projectValueUpTo: 1000000, serviceFeePercent: 2 },
+      { projectValueUpTo: null,    serviceFeePercent: 1 },
+    ],
+    note: "Pay lead fee to unlock owner contact details. Pay service fee after winning the contract.",
+  });
+});
+
+// ── Labour platform fee tiers (public) ───────────────────────────────────────
+router.get("/api/platform-fees/labour-tiers", (req, res) => {
+  res.status(200).json({
+    success: true,
+    data: [
+      { dailyWageUpTo: 800,  dailyWageFrom: 0,    fee: 30,  feeType: "fixed" },
+      { dailyWageUpTo: 1200, dailyWageFrom: 801,  fee: 50,  feeType: "fixed" },
+      { dailyWageUpTo: 2000, dailyWageFrom: 1201, fee: 75,  feeType: "fixed" },
+      { dailyWageUpTo: null, dailyWageFrom: 2001, fee: "5% capped at ₹100", feeType: "percentage" },
+    ],
+    note: "Platform fee is charged per working day and deducted from net payment",
+  });
+});
+
+// ── Rating routes ─────────────────────────────────────────────────────────────
+router.post("/api/ratings", verifyToken, ratingController.submitRating);
+router.get("/api/ratings/my", verifyToken, ratingController.getMyGivenRatings);
+router.get("/api/ratings/order/:orderId", verifyToken, ratingController.getRatingsByOrder);
+router.get("/api/ratings/user/:userId", verifyToken, ratingController.getRatingsByUser);
+// Admin rating routes
+router.get("/api/admin/ratings", verifyAdminToken, ratingController.getAllRatings);
+router.delete("/api/admin/ratings/:id", verifyAdminToken, ratingController.deleteRating);
+
 router.post("/createLabour", verifyAdminToken, labourController.createLabour);
 router.get("/searchLabour", verifyToken, labourController.searchLabours);
 router.get("/getAllLabour", verifyToken, labourController.getAllLabours);

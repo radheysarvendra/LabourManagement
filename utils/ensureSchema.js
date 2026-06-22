@@ -754,6 +754,29 @@ const ensureSchema = async (db) => {
     console.warn("contractorCategories migration skipped:", e.message);
   }
 
+  // Labour verification columns (added for the verification flow)
+  const labourVerificationColumns = {
+    aadharNumber:            { type: db.Sequelize.STRING(20), allowNull: true },
+    documentUrl:             { type: db.Sequelize.TEXT,       allowNull: true },
+    rejectionReason:         { type: db.Sequelize.TEXT,       allowNull: true },
+    verificationSubmittedAt: { type: db.Sequelize.DATE,       allowNull: true },
+  };
+  for (const [col, def] of Object.entries(labourVerificationColumns)) {
+    await ensureColumn(queryInterface, "labourProfiles", col, def);
+  }
+
+  // ratings table index — table may not exist yet on first deploy (Sequelize sync creates it)
+  try {
+    await ensureIndex(queryInterface, "ratings", ["orderId", "ratedByUserId", "rateeType"], "uq_rating_per_ratee_per_order", { unique: true });
+  } catch (e) { /* table not yet created — sync will handle it */ }
+
+  // platformFee column on workPayments (labour platform fee per day)
+  await ensureColumn(queryInterface, "workPayments", "platformFee", {
+    type: db.Sequelize.FLOAT,
+    allowNull: false,
+    defaultValue: 0,
+  });
+
   await ensureIndex(queryInterface, "sessions", ["tokenHash"], "idx_sessions_token_hash");
   await ensureIndex(queryInterface, "sessions", ["userId"], "idx_sessions_user_id");
   await ensureIndex(queryInterface, "orderAssignments", ["orderId"], "idx_order_assignments_order_id");
