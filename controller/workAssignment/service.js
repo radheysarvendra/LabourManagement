@@ -29,6 +29,17 @@ const assignmentInclude = [
   { model: WorkPayment, as: "payments", required: false },
 ];
 
+// Labour platform fee tiers (charged per day, deducted from gross)
+// Up to ₹800 → ₹30 | ₹800–₹1200 → ₹50 | ₹1200–₹2000 → ₹75 | ₹2000+ → 5% capped ₹100
+const calcLabourPlatformFee = (dailyWage) => {
+  const wage = Number(dailyWage) || 0;
+  if (wage <= 0)    return 0;
+  if (wage <= 800)  return 30;
+  if (wage <= 1200) return 50;
+  if (wage <= 2000) return 75;
+  return Math.min(wage * 0.05, 100);
+};
+
 const generateAssignmentCode = async () => {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const code = `WA-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -703,7 +714,9 @@ const generatePaymentService = async (workAssignmentId, payload) => {
   const absentDays = attendances.filter((item) => item.status === "absent").length;
   const dailyWage = Number(assignmentLabour.dailyWage || 0);
   const grossAmount = presentDays * dailyWage + halfDays * dailyWage * 0.5;
-  const netAmount = Math.max(grossAmount - Number(deductions || 0), 0);
+  const totalWorkingDays = presentDays + halfDays * 0.5;
+  const platformFee = parseFloat((calcLabourPlatformFee(dailyWage) * totalWorkingDays).toFixed(2));
+  const netAmount = Math.max(grossAmount - Number(deductions || 0) - platformFee, 0);
 
   const existingPayment = await WorkPayment.findOne({
     where: { workAssignmentId, labourId, fromDate, toDate },
@@ -731,6 +744,7 @@ const generatePaymentService = async (workAssignmentId, payload) => {
     dailyWage,
     grossAmount,
     deductions,
+    platformFee,
     netAmount,
     paymentStatus: "pending",
   });

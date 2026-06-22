@@ -99,6 +99,9 @@ db.orderAssignment = require("./orderAssignment")(sequelize, DataTypes);
 db.labourAssignmentDetail = require("./labourAssignmentDetail")(sequelize, DataTypes);
 db.contractorAssignmentDetail = require("./contractorAssignmentDetail")(sequelize, DataTypes);
 db.contractorMilestone = require("./contractorMilestone")(sequelize, DataTypes);
+db.rating = require("./rating")(sequelize, DataTypes);
+db.orderPayment    = require("./orderPayment")(sequelize, DataTypes);
+db.contractorLead  = require("./contractorLead")(sequelize, DataTypes);
 
 // NOTE - users → labours/owners (unified identity)
 db.user.hasOne(db.labour, { foreignKey: "userId", as: "labourProfile" });
@@ -563,6 +566,24 @@ db.contractorMilestone.belongsTo(db.orderAssignment, { foreignKey: "assignmentId
 // orderAssignment → workAttendance (new-flow via assignmentId)
 db.orderAssignment.hasMany(db.workAttendance, { foreignKey: "assignmentId", as: "attendances", onDelete: "CASCADE" });
 db.workAttendance.belongsTo(db.orderAssignment, { foreignKey: "assignmentId", as: "orderAssignment" });
+
+// contractorLead associations
+db.order.hasMany(db.contractorLead, { foreignKey: "orderId", as: "contractorLeads", onDelete: "CASCADE" });
+db.contractorLead.belongsTo(db.order, { foreignKey: "orderId", as: "order" });
+db.user.hasMany(db.contractorLead, { foreignKey: "contractorUserId", as: "contractorLeads" });
+db.contractorLead.belongsTo(db.user, { foreignKey: "contractorUserId", as: "contractor" });
+
+// orderPayment associations
+db.order.hasMany(db.orderPayment, { foreignKey: "orderId", as: "orderPayments", onDelete: "CASCADE" });
+db.orderPayment.belongsTo(db.order, { foreignKey: "orderId", as: "order" });
+
+// rating associations
+db.order.hasMany(db.rating, { foreignKey: "orderId", as: "ratings", onDelete: "CASCADE" });
+db.rating.belongsTo(db.order, { foreignKey: "orderId", as: "order" });
+db.user.hasMany(db.rating, { foreignKey: "ratedByUserId", as: "givenRatings" });
+db.rating.belongsTo(db.user, { foreignKey: "ratedByUserId", as: "ratedBy" });
+db.user.hasMany(db.rating, { foreignKey: "ratedUserId", as: "receivedRatings" });
+db.rating.belongsTo(db.user, { foreignKey: "ratedUserId", as: "rated" });
 
 db.connectDB = connectDB;
 module.exports = db;
