@@ -33,9 +33,10 @@ const normalizeOwnerRole = (value) => {
 };
 
 const USER_ATTRIBUTES = [
-  "id", "name", "age", "gender", "profileImage",
+  "id", "name", "phone", "age", "gender", "profileImage",
   "city", "village", "district", "state", "stateId", "districtId",
   "pincode", "pincodeId", "postOffice", "postOfficeId", "area", "address",
+  "isActive", "status",
 ];
 
 const ownerInclude = [{ model: User, as: "user", required: false, attributes: USER_ATTRIBUTES }];
@@ -47,14 +48,14 @@ const mapOwnerWithUser = (owner) => {
   return {
     id: json.id,
     userId: json.userId,
-    name: json.name,
-    phone: json.phone,
+    name: user.name ?? null,
+    phone: user.phone ?? null,
     workType: json.workType,
     categoryId: json.categoryId,
     skillId: json.skillId,
-    isActive: json.isActive,
+    isActive: user.isActive ?? true,
     registeredFrom: json.registeredFrom,
-    status: json.status,
+    status: user.status ?? 1,
     createdById: json.createdById,
     updatedById: json.updatedById,
     createdAt: json.createdAt,
@@ -131,7 +132,7 @@ const createOwnerService = async (payload) => {
     return { statusCode: 400, body: { success: false, message: msg.PHONE_LENGTH_INVALID } };
   }
 
-  const existingOwner = await Owner.findOne({ where: { phone } });
+  const existingOwner = await User.findOne({ where: { phone } });
   if (existingOwner) {
     return { statusCode: 409, body: { success: false, message: "Phone already registered. Log in using OTP.", isRegistered: true } };
   }
@@ -153,13 +154,10 @@ const createOwnerService = async (payload) => {
 
   const data = await Owner.create({
     userId: userRow.id,
-    name, phone,
     workType: normalizeWorkType(workType),
     categoryId: categoryId || null,
     skillId: skillId || null,
-    isActive: true,
     registeredFrom: resolvedRegisteredFrom,
-    status: 1,
   });
 
   return buildOwnerSession(data, sessionUserType, msg.OWNER_CREATED_SUCCESSFULLY, 201);
@@ -177,8 +175,8 @@ const getAllOwnersService = async ({ page = 1, limit = 20, search = "" } = {}) =
 
   if (term) {
     where[Op.or] = [
-      { name: { [Op.iLike]: `%${term}%` } },
-      { phone: { [Op.iLike]: `%${term}%` } },
+      { "$user.name$": { [Op.iLike]: `%${term}%` } },
+      { "$user.phone$": { [Op.iLike]: `%${term}%` } },
       db.Sequelize.where(
         db.Sequelize.cast(db.Sequelize.col("workType"), "text"),
         { [Op.iLike]: `%${term}%` }
@@ -230,21 +228,18 @@ const updateOwnerService = async (id, payload) => {
   }
 
   if (payload.phone) {
-    const existingOwner = await Owner.findOne({ where: { phone: payload.phone } });
-    if (existingOwner && existingOwner.id != id) {
+    const existingUser = await User.findOne({ where: { phone: payload.phone } });
+    if (existingUser && existingUser.id != owner.userId) {
       return { statusCode: 400, body: { success: false, message: msg.PHONE_ALREADY_REGISTERED } };
     }
   }
 
   // Update owner-specific fields
   const ownerUpdate = {};
-  if (payload.name !== undefined) ownerUpdate.name = payload.name;
-  if (payload.phone !== undefined) ownerUpdate.phone = payload.phone;
   if (payload.workType !== undefined) ownerUpdate.workType = normalizeWorkType(payload.workType);
   if (payload.categoryId !== undefined) ownerUpdate.categoryId = payload.categoryId || null;
   if (payload.skillId !== undefined) ownerUpdate.skillId = payload.skillId || null;
-  if (payload.isActive !== undefined) ownerUpdate.isActive = payload.isActive;
-  if (payload.status !== undefined) ownerUpdate.status = payload.status;
+  // isActive and status now live on users table
   if (Object.keys(ownerUpdate).length > 0) {
     await Owner.update(ownerUpdate, { where: { id } });
   }
@@ -265,6 +260,8 @@ const updateOwnerService = async (id, payload) => {
     if (location.postOffice) userUpdate.postOffice = location.postOffice;
     if (location.area) userUpdate.area = location.area;
     if (payload.address !== undefined) userUpdate.address = payload.address;
+    if (payload.isActive !== undefined) userUpdate.isActive = payload.isActive;
+    if (payload.status !== undefined) userUpdate.status = payload.status;
     if (Object.keys(userUpdate).length > 0) {
       await User.update(userUpdate, { where: { id: owner.userId } });
     }

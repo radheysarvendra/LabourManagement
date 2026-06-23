@@ -14,7 +14,7 @@ const commonOptions = {
   },
   dialectOptions: {
     connectTimeout: 60000,
-    ...(config.DATABASE_URL
+    ...(config.IS_REMOTE_DB
       ? {
           ssl: {
             require: true,
@@ -67,7 +67,6 @@ db.owner = require("./owner")(sequelize, DataTypes);
 db.skill = require("./skill")(sequelize, DataTypes);
 db.category = require("./category")(sequelize, DataTypes);
 db.categorySkill = require("./categorySkill")(sequelize, DataTypes);
-db.labourSkill = require("./labourSkill")(sequelize, DataTypes);
 db.state = require("./state")(sequelize, DataTypes);
 db.district = require("./district")(sequelize, DataTypes);
 db.pincode = require("./pincode")(sequelize, DataTypes);
@@ -91,6 +90,7 @@ db.workPayment = require("./workPayment")(sequelize, DataTypes);
 db.appRole = require("./appRole")(sequelize, DataTypes);
 db.userRole = require("./userRole")(sequelize, DataTypes);
 db.labourProfile = require("./labourProfile")(sequelize, DataTypes);
+db.labourSkill = require("./labourSkill")(sequelize, DataTypes);   // after labourProfile (FK dep)
 db.contractorProfile = require("./contractorProfile")(sequelize, DataTypes);
 db.contractorSkill = require("./contractorSkill")(sequelize, DataTypes);
 db.contractorCategory = require("./contractorCategory")(sequelize, DataTypes);

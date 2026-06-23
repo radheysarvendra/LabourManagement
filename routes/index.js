@@ -20,6 +20,7 @@ const contractorLeadController      = require("../controller/contractorLead/inde
 const labourVerificationController  = require("../controller/labourVerification/index");
 const { verifyAdminToken, allowAdminModule } = require("../middleware/adminAuth");
 const { verifyToken } = require("../middleware/auth");
+const upload = require("../middleware/upload");
 
 router.get("/", (req, res) => {
   res.status(200).send({
@@ -140,6 +141,14 @@ router.put("/api/work-assignments/:id/attendance/:attendanceId", verifyToken, wo
 router.post("/api/work-assignments/:id/payments/generate", verifyToken, workAssignmentController.generatePayment);
 router.get("/api/work-assignments/:id/payments", verifyToken, workAssignmentController.getPayments);
 router.put("/api/work-assignments/:id/payments/:paymentId/status", verifyToken, workAssignmentController.updatePaymentStatus);
+// ── File Upload ───────────────────────────────────────────────────────────────
+router.post("/api/upload", verifyToken, upload.single("file"), (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded" });
+  const host = req.protocol + "://" + req.get("host");
+  const url  = `${host}/uploads/${req.file.filename}`;
+  res.status(200).json({ success: true, url, filename: req.file.filename });
+});
+
 // ── Labour Verification ───────────────────────────────────────────────────────
 router.post("/api/labour/verification/submit",   verifyToken, labourVerificationController.submitVerification);
 router.get("/api/labour/verification/status",    verifyToken, labourVerificationController.getMyVerificationStatus);

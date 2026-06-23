@@ -14,14 +14,14 @@ const Skill = db.skill;
 
 const assignmentInclude = [
   { model: Order, as: "order", required: false },
-  { model: Owner, as: "owner", required: false },
+  { model: Owner, as: "owner", required: false, include: [{ model: db.user, as: "user", attributes: ["name", "phone"] }] },
   { model: Admin, as: "middleman", required: false, attributes: { exclude: ["passwordHash"] } },
   {
     model: WorkAssignmentLabour,
     as: "assignmentLabours",
     required: false,
     include: [
-      { model: Labour, as: "labour", required: false },
+      { model: Labour, as: "labour", required: false, include: [{ model: db.user, as: "user", attributes: ["id", "name", "phone"] }] },
       { model: Skill, as: "skillDetail", required: false },
     ],
   },
@@ -107,8 +107,8 @@ const mapAssignment = (assignment) => {
 
   return {
     ...json,
-    ownerName: json.owner?.name || order.ownerName || null,
-    ownerPhone: json.owner?.phone || order.ownerPhone || null,
+    ownerName: json.owner?.user?.name || order.ownerName || null,
+    ownerPhone: json.owner?.user?.phone || order.ownerPhone || null,
     labourCount: Array.isArray(json.assignmentLabours) ? json.assignmentLabours.length : 0,
   };
 };
@@ -470,7 +470,7 @@ const getAssignmentLaboursService = async (workAssignmentId) => {
   const data = await WorkAssignmentLabour.findAll({
     where: { workAssignmentId },
     include: [
-      { model: Labour, as: "labour", required: false },
+      { model: Labour, as: "labour", required: false, include: [{ model: db.user, as: "user", attributes: ["id", "name", "phone"] }] },
       { model: Skill, as: "skillDetail", required: false },
     ],
     order: [["createdAt", "DESC"]],
@@ -615,7 +615,7 @@ const getAttendanceService = async ({ workAssignmentId, labourId, fromDate, toDa
 
   const result = await WorkAttendance.findAndCountAll({
     where,
-    include: [{ model: Labour, as: "labour", required: false }],
+    include: [{ model: Labour, as: "labour", required: false, include: [{ model: db.user, as: "user", attributes: ["id", "name", "phone"] }] }],
     order: [["attendanceDate", "DESC"]],
     offset,
     limit: pageLimit,
@@ -771,7 +771,7 @@ const getPaymentsService = async ({ workAssignmentId, labourId, paymentStatus, p
 
   const result = await WorkPayment.findAndCountAll({
     where,
-    include: [{ model: Labour, as: "labour", required: false }],
+    include: [{ model: Labour, as: "labour", required: false, include: [{ model: db.user, as: "user", attributes: ["id", "name", "phone"] }] }],
     order: [["createdAt", "DESC"]],
     offset,
     limit: pageLimit,

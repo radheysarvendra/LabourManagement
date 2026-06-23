@@ -75,16 +75,6 @@ const registerService = async (payload) => {
     return { statusCode: 409, body: { success: false, message: "Phone already registered. Please log in." } };
   }
 
-  // Also check labours and owners for backward compat
-  const [existingLabour, existingOwner] = await Promise.all([
-    Labour.findOne({ where: { phone: normalizedPhone } }),
-    Owner.findOne({ where: { phone: normalizedPhone } }),
-  ]);
-
-  if (existingLabour || existingOwner) {
-    return { statusCode: 409, body: { success: false, message: "Phone already registered. Please log in." } };
-  }
-
   // Wrap in transaction — if profile creation fails, user row is rolled back
   const { user, profileRecord, appRoleCode } = await db.sequelize.transaction(async (t) => {
     const newUser = await User.create({
@@ -110,21 +100,30 @@ const registerService = async (payload) => {
     let newProfile = null;
 
     if (role === "labour") {
+      // Generate unique LAB-XXXXXX code before creating the record
+      let labourCode = null;
+      for (let i = 0; i < 8; i++) {
+        const code = `LAB-${Math.floor(100000 + Math.random() * 900000)}`;
+        const exists = await Labour.findOne({ where: { labourCode: code } });
+        if (!exists) { labourCode = code; break; }
+      }
+      if (!labourCode) labourCode = `LAB-${Date.now().toString().slice(-6)}`;
+
       newProfile = await Labour.create({
         userId: newUser.id,
-        name,
-        phone: normalizedPhone,
-        age: age ? Number(age) : 0,
-        gender: gender || "male",
-        city: city || null,
-        state: state || null,
-        district: district || null,
-        pincode: pincode || null,
-        area: area || null,
+        labourCode,
         isAvailable: true,
         isVerified: false,
         registeredFrom: "labour",
-        status: 1,
+      }, { transaction: t });
+
+      // labourProfile must exist before LabourSkill (FK: labourSkills.labourUserId → labourProfiles.userId)
+      await db.labourProfile.create({
+        userId: newUser.id,
+        labourCode,
+        experienceYears: 0,
+        isAvailable: true,
+        verificationStatus: "pending",
       }, { transaction: t });
 
       if (skills && skills.length > 0) {
@@ -136,14 +135,10 @@ const registerService = async (payload) => {
     } else {
       newProfile = await Owner.create({
         userId: newUser.id,
-        name,
-        phone: normalizedPhone,
         workType: workType || "both",
         categoryId: categoryId || null,
         skillId: skillId || null,
-        isActive: true,
         registeredFrom: role,
-        status: 1,
       }, { transaction: t });
     }
 
@@ -160,15 +155,7 @@ const registerService = async (payload) => {
       profileStatus: "complete",
     }, { transaction: t });
 
-    if (role === "labour") {
-      await db.labourProfile.create({
-        userId: newUser.id,
-        labourCode: newProfile.labourCode || null,
-        experienceYears: 0,
-        isAvailable: true,
-        verificationStatus: "pending",
-      }, { transaction: t });
-    } else if (role === "contractor") {
+    if (role === "contractor") {
       await db.contractorProfile.create({
         userId: newUser.id,
         experienceYears: 0,
@@ -226,9 +213,9 @@ const completeOwnerProfileService = async ({ userId, userType, isSessionAuth, wo
       const [legacyOwner] = await Owner.findOrCreate({
         where: { userId: globalUser.id },
         defaults: {
-          name: globalUser.name, phone: globalUser.phone, workType: workType || "both",
+          workType: workType || "both",
           categoryId: categoryId || null, skillId: skillId || null,
-          isActive: true, registeredFrom: "owner", status: 1,
+          registeredFrom: "owner",
         },
         transaction,
       });
@@ -247,21 +234,17 @@ const completeOwnerProfileService = async ({ userId, userType, isSessionAuth, wo
     return { statusCode: 404, body: { success: false, message: "User not found" } };
   }
 
-  const existing = await Owner.findOne({ where: { phone: profileRecord.phone } });
+  const existing = await Owner.findOne({ where: { userId: profileRecord.userId } });
   if (existing) {
     return { statusCode: 200, body: { success: true, message: "Owner profile already exists", profile: existing } };
   }
 
   const newOwner = await Owner.create({
     userId: profileRecord.userId || null,
-    name: profileRecord.name,
-    phone: profileRecord.phone,
     workType: workType || "both",
     categoryId: categoryId || null,
     skillId: skillId || null,
-    isActive: true,
     registeredFrom: "owner",
-    status: 1,
   });
 
   return {
@@ -294,8 +277,8 @@ const completeLabourProfileService = async ({ userId, userType, isSessionAuth, s
       const [legacyLabour] = await Labour.findOrCreate({
         where: { userId: globalUser.id },
         defaults: {
-          name: globalUser.name, phone: globalUser.phone, isAvailable: true,
-          isVerified: false, registeredFrom: "labour", status: 1,
+          isAvailable: true,
+          isVerified: false, registeredFrom: "labour",
         },
         transaction,
       });
@@ -323,7 +306,7 @@ const completeLabourProfileService = async ({ userId, userType, isSessionAuth, s
     return { statusCode: 404, body: { success: false, message: "User not found" } };
   }
 
-  const existing = await Labour.findOne({ where: { phone: profileRecord.phone } });
+  const existing = await Labour.findOne({ where: { userId: profileRecord.userId } });
   if (existing) {
     return { statusCode: 200, body: { success: true, message: "Labour profile already exists", profile: existing } };
   }
@@ -349,14 +332,20 @@ const completeLabourProfileService = async ({ userId, userType, isSessionAuth, s
     }
   }
 
+  let labourCode2 = null;
+  for (let i = 0; i < 8; i++) {
+    const code = `LAB-${Math.floor(100000 + Math.random() * 900000)}`;
+    const exists = await Labour.findOne({ where: { labourCode: code } });
+    if (!exists) { labourCode2 = code; break; }
+  }
+  if (!labourCode2) labourCode2 = `LAB-${Date.now().toString().slice(-6)}`;
+
   const newLabour = await Labour.create({
     userId: profileRecord.userId || null,
-    name: profileRecord.name,
-    phone: profileRecord.phone,
+    labourCode: labourCode2,
     isAvailable: true,
     isVerified: false,
     registeredFrom: "labour",
-    status: 1,
   });
 
   if (skills && skills.length > 0) {

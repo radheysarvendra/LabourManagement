@@ -131,8 +131,13 @@ async function ensureTableExists(localClient, tableName, columns) {
   console.log(`  Created table: ${tableName}`);
 }
 
-async function copyTableData(liveClient, localClient, tableName, columns) {
-  const colNames = columns.map((c) => `"${c.column_name}"`).join(", ");
+async function copyTableData(liveClient, localClient, tableName, liveColumns, localColumns) {
+  // Only sync columns that exist in BOTH databases — Neon may have old/extra columns
+  const localColSet = new Set(localColumns.map((c) => c.column_name));
+  const commonColumns = liveColumns.filter((c) => localColSet.has(c.column_name));
+  if (commonColumns.length === 0) return 0;
+
+  const colNames = commonColumns.map((c) => `"${c.column_name}"`).join(", ");
   const { rows } = await liveClient.query(`SELECT ${colNames} FROM "${tableName}"`);
   if (rows.length === 0) return 0;
 
@@ -144,9 +149,9 @@ async function copyTableData(liveClient, localClient, tableName, columns) {
     let paramCount = 0;
 
     for (const row of batch) {
-      const rowParams = columns.map(() => `$${++paramCount}`);
+      const rowParams = commonColumns.map(() => `$${++paramCount}`);
       values.push(`(${rowParams.join(", ")})`);
-      for (const col of columns) {
+      for (const col of commonColumns) {
         params.push(row[col.column_name] ?? null);
       }
     }
@@ -267,11 +272,13 @@ async function runSync() {
     }
 
     for (const table of tables) {
-      const columns = await getColumns(liveClient, table);
-      await ensureTableExists(localClient, table, columns);
+      const liveColumns = await getColumns(liveClient, table);
+      await ensureTableExists(localClient, table, liveColumns);
+      // Fetch local columns AFTER ensureTableExists so newly created tables are included
+      const localColumns = await getColumns(localClient, table);
 
       await localClient.query(`DELETE FROM "${table}"`);
-      const count = await copyTableData(liveClient, localClient, table, columns);
+      const count = await copyTableData(liveClient, localClient, table, liveColumns, localColumns);
       console.log(`  ${table}: ${count} rows`);
     }
 

@@ -1,7 +1,14 @@
 require("dotenv").config();
 
 const isProduction = process.env.NODE_ENV === "production";
-const databaseUrl = process.env.DATABASE_URL || process.env.LIVE_DATABASE_URL || "";
+
+// Production  → LIVE_DATABASE_URL (Neon cloud)
+// Development → LOCAL_DATABASE_URL (your local PostgreSQL)
+// Override either with DATABASE_URL if set explicitly
+const databaseUrl = process.env.DATABASE_URL
+  || (isProduction ? process.env.LIVE_DATABASE_URL : process.env.LOCAL_DATABASE_URL)
+  || process.env.LIVE_DATABASE_URL
+  || "";
 const requiredInProduction = ["SECRET_KEY", "DEFAULT_ADMIN_PASSWORD"];
 
 if (isProduction) {
@@ -16,9 +23,15 @@ if (isProduction) {
   }
 }
 
+// SSL only for remote databases (not localhost / 127.0.0.1)
+const isRemoteDb = Boolean(databaseUrl) &&
+  !databaseUrl.includes("localhost") &&
+  !databaseUrl.includes("127.0.0.1");
+
 exports.config = {
   PORT: process.env.PORT || 5352,
   DATABASE_URL: databaseUrl,
+  IS_REMOTE_DB: isRemoteDb,
   HOST: process.env.DB_HOST || "localhost",
   USER: process.env.DB_USER || "postgres",
   PASSWORD: process.env.DB_PASSWORD || "",

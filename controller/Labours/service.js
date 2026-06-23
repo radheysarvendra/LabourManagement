@@ -13,7 +13,7 @@ const Pincode = db.pincode;
 const PostOffice = db.postOffice;
 
 const USER_ATTRIBUTES = [
-  "id", "name", "age", "gender", "profileImage",
+  "id", "name", "phone", "age", "gender", "profileImage",
   "city", "village", "district", "state", "stateId", "districtId",
   "pincode", "pincodeId", "postOffice", "postOfficeId", "area", "address",
 ];
@@ -174,10 +174,10 @@ const mapLabourWithSkills = (labour) => {
   return {
     id: json.id,
     userId: json.userId,
-    name: json.name,
-    phone: json.phone,
+    name: user.name ?? null,
+    phone: user.phone ?? null,
     labourCode: json.labourCode,
-    status: json.status,
+    status: user.status ?? null,
     isAvailable: json.isAvailable,
     isVerified: json.isVerified,
     experienceYears: json.experienceYears,
@@ -278,7 +278,7 @@ const createLabourService = async (payload) => {
     return { statusCode: 400, body: { success: false, message: msg.PHONE_LENGTH_INVALID } };
   }
 
-  const existingPhone = await Labour.findOne({ where: { phone } });
+  const existingPhone = await User.findOne({ where: { phone } });
   if (existingPhone) {
     return { statusCode: 400, body: { success: false, message: msg.PHONE_EXIST } };
   }
@@ -309,12 +309,11 @@ const createLabourService = async (payload) => {
 
   const data = await Labour.create({
     userId: userRow.id,
-    name, phone, labourCode,
+    labourCode,
     isAvailable: isAvailable ?? true,
     isVerified: false,
     experienceYears: experienceYears || 0,
     registeredFrom,
-    status: 1,
   });
 
   if (skillList.length > 0) {
@@ -371,8 +370,8 @@ const updateLabourByIdService = async (id, payload) => {
   }
 
   if (payload.phone) {
-    const existingPhone = await Labour.findOne({ where: { phone: payload.phone } });
-    if (existingPhone && existingPhone.id != id) {
+    const existingPhone = await User.findOne({ where: { phone: payload.phone } });
+    if (existingPhone && existingPhone.id != labour.userId) {
       return { statusCode: 400, body: { success: false, message: msg.PHONE_EXIST } };
     }
   }
@@ -387,13 +386,10 @@ const updateLabourByIdService = async (id, payload) => {
 
   // Update labour-specific fields
   const labourUpdate = {};
-  if (payload.name !== undefined) labourUpdate.name = payload.name;
-  if (payload.phone !== undefined) labourUpdate.phone = payload.phone;
   if (payload.isAvailable !== undefined) labourUpdate.isAvailable = payload.isAvailable;
   if (payload.isVerified !== undefined) labourUpdate.isVerified = payload.isVerified;
   if (payload.experienceYears !== undefined) labourUpdate.experienceYears = payload.experienceYears;
   if (payload.registeredFrom !== undefined) labourUpdate.registeredFrom = payload.registeredFrom;
-  if (payload.status !== undefined) labourUpdate.status = payload.status;
   if (Object.keys(labourUpdate).length > 0) {
     await Labour.update(labourUpdate, { where: { id } });
   }
@@ -413,6 +409,7 @@ const updateLabourByIdService = async (id, payload) => {
     if (location.postOffice) userUpdate.postOffice = location.postOffice;
     if (location.area) userUpdate.area = location.area;
     if (payload.address !== undefined) userUpdate.address = payload.address;
+    if (payload.status !== undefined) userUpdate.status = payload.status;
     if (locationIds.stateId) userUpdate.stateId = locationIds.stateId;
     if (locationIds.districtId) userUpdate.districtId = locationIds.districtId;
     if (locationIds.pincodeId) userUpdate.pincodeId = locationIds.pincodeId;
