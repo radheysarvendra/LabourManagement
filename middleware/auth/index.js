@@ -91,9 +91,16 @@ const saveToken = async (user, token, userType) => {
     where: { userId: user.id, userType },
   });
 
+  // phone is now canonical on users table; look it up via userId when not on profile
+  let phone = user.phone;
+  if (!phone && user.userId) {
+    const globalUser = await User.findByPk(user.userId, { attributes: ["phone"] });
+    phone = globalUser?.phone || null;
+  }
+
   return await TokenDetails.create({
     userId: user.id,
-    phone: user.phone,
+    phone,
     token,
     userType,
     type: "Primary",
@@ -166,19 +173,25 @@ const verifyOtpHash = (otp, savedHash) => {
 // ── Old-flow user lookups (kept for backward compat) ─────────────────────────
 
 const findUserByPhone = async (phone) => {
-  const labour = await Labour.findOne({ where: { phone } });
+  const globalUser = await User.findOne({ where: { phone } });
+  if (!globalUser) return { user: null, userType: null };
+
+  const labour = await Labour.findOne({ where: { userId: globalUser.id } });
   if (labour) return { user: labour, userType: ROLE_TYPES.LABOUR };
 
-  const owner = await Owner.findOne({ where: { phone } });
+  const owner = await Owner.findOne({ where: { userId: globalUser.id } });
   if (owner) return { user: owner, userType: ROLE_TYPES.OWNER };
 
   return { user: null, userType: null };
 };
 
 const findUsersByPhone = async (phone) => {
+  const globalUser = await User.findOne({ where: { phone } });
+  if (!globalUser) return [];
+
   const [labour, owner] = await Promise.all([
-    Labour.findOne({ where: { phone } }),
-    Owner.findOne({ where: { phone } }),
+    Labour.findOne({ where: { userId: globalUser.id } }),
+    Owner.findOne({ where: { userId: globalUser.id } }),
   ]);
   const users = [];
 
@@ -193,24 +206,17 @@ const findUsersByPhone = async (phone) => {
   }
 
   if (!owner && labour) {
-    const globalUser = await User.findOne({ where: { phone } });
-    if (globalUser) {
-      try {
-        const newOwner = await Owner.create({
-          userId: globalUser.id,
-          name: labour.name,
-          phone,
-          workType: "both",
-          isActive: true,
-          registeredFrom: "owner",
-          status: 1,
-        });
-        users.push({ user: newOwner, userType: ROLE_TYPES.OWNER });
-        users.push({ user: newOwner, userType: ROLE_TYPES.CONTRACTOR });
-        users.push({ user: newOwner, userType: ROLE_TYPES.CONTRACTOR_CUSTOMER });
-      } catch (e) {
-        console.warn("Cross-role owner auto-create skipped for phone", phone, ":", e.message);
-      }
+    try {
+      const newOwner = await Owner.create({
+        userId: globalUser.id,
+        workType: "both",
+        registeredFrom: "owner",
+      });
+      users.push({ user: newOwner, userType: ROLE_TYPES.OWNER });
+      users.push({ user: newOwner, userType: ROLE_TYPES.CONTRACTOR });
+      users.push({ user: newOwner, userType: ROLE_TYPES.CONTRACTOR_CUSTOMER });
+    } catch (e) {
+      console.warn("Cross-role owner auto-create skipped for phone", phone, ":", e.message);
     }
   }
 
@@ -218,16 +224,17 @@ const findUsersByPhone = async (phone) => {
 };
 
 const getUserForRole = async (userType, idOrPhone, byPhone = false) => {
-  const where = byPhone ? { phone: idOrPhone } : { id: idOrPhone };
-
-  if (userType === ROLE_TYPES.LABOUR) {
-    return await Labour.findOne({ where });
+  if (byPhone) {
+    const globalUser = await User.findOne({ where: { phone: idOrPhone } });
+    if (!globalUser) return null;
+    if (userType === ROLE_TYPES.LABOUR) return await Labour.findOne({ where: { userId: globalUser.id } });
+    if (OWNER_PROFILE_ROLES.includes(userType)) return await Owner.findOne({ where: { userId: globalUser.id } });
+    return null;
   }
 
-  if (OWNER_PROFILE_ROLES.includes(userType)) {
-    return await Owner.findOne({ where });
-  }
-
+  const where = { id: idOrPhone };
+  if (userType === ROLE_TYPES.LABOUR) return await Labour.findOne({ where });
+  if (OWNER_PROFILE_ROLES.includes(userType)) return await Owner.findOne({ where });
   return null;
 };
 

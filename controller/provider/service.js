@@ -69,8 +69,8 @@ const mapContractor = (owner) => {
   return {
     id: json.id,
     userId: json.userId,
-    name: user.name || json.name,
-    phone: json.phone,
+    name: user.name || null,
+    phone: user.phone || null,
     providerType: "contractor",
     workType: json.workType,
     categoryId: json.categoryId,
@@ -90,7 +90,7 @@ const mapContractor = (owner) => {
     age: user.age || null,
     gender: user.gender || null,
     profileImage: user.profileImage || null,
-    isAvailable: json.isActive,
+    isAvailable: user.isActive ?? true,
     isVerified: false,
     registeredFrom: json.registeredFrom,
     createdAt: json.createdAt,
@@ -241,7 +241,7 @@ const searchContractors = async ({
   }
 
   // Old flow fallback — owners table with registeredFrom=contractor
-  const ownerWhere = { registeredFrom: "contractor", isActive: true };
+  const ownerWhere = { registeredFrom: "contractor" };
   if (categoryId) ownerWhere.categoryId = Number(categoryId);
   if (skillId) ownerWhere.skillId = Number(skillId);
 
@@ -251,8 +251,9 @@ const searchContractors = async ({
       {
         model: User,
         as: "user",
-        required: false,
-        attributes: ["id", "name", "age", "gender", "profileImage", "city", "district", "state", "stateId", "districtId", "pincode", "pincodeId", "postOffice", "postOfficeId", "area"],
+        required: true,
+        where: { isActive: true },
+        attributes: ["id", "name", "phone", "age", "gender", "profileImage", "city", "district", "state", "stateId", "districtId", "pincode", "pincodeId", "postOffice", "postOfficeId", "area", "isActive", "status"],
       },
       { model: Skill, as: "skillDetail", required: false },
       { model: Category, as: "categoryDetail", required: false },

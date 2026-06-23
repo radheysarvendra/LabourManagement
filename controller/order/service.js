@@ -34,8 +34,8 @@ const resolveUserIds = async (userIds) => {
   if (!userIds || userIds.length === 0) return {};
 
   const [labours, owners] = await Promise.all([
-    Labour.findAll({ where: { id: userIds }, attributes: ["id", "name", "phone", "userId"] }),
-    Owner.findAll({ where: { id: userIds }, attributes: ["id", "name", "phone", "userId"] }),
+    Labour.findAll({ where: { id: userIds }, attributes: ["id", "userId"] }),
+    Owner.findAll({ where: { id: userIds }, attributes: ["id", "userId"] }),
   ]);
 
   // Collect globalUserIds (users table ids) from both tables
@@ -57,12 +57,12 @@ const resolveUserIds = async (userIds) => {
   const map = {};
   labours.forEach((l) => {
     const u = l.userId ? usersMap[l.userId] : null;
-    map[l.id] = { id: l.id, name: u?.name || l.name, phone: u?.phone || l.phone };
+    map[l.id] = { id: l.id, name: u?.name || null, phone: u?.phone || null };
   });
   owners.forEach((o) => {
     if (!map[o.id]) {
       const u = o.userId ? usersMap[o.userId] : null;
-      map[o.id] = { id: o.id, name: u?.name || o.name, phone: u?.phone || o.phone };
+      map[o.id] = { id: o.id, name: u?.name || null, phone: u?.phone || null };
     }
   });
   return map;
@@ -266,20 +266,20 @@ const createOrderService = async (payload) => {
   const ownerRecord = !isLabourUser
     ? await Owner.findOne({
         where: _isSessionAuth ? { userId: requesterUserId } : { id: legacyProfileId },
-        attributes: ["id", "name", "phone", "userId"],
+        attributes: ["id", "userId"],
       })
     : null;
   const userRecord = isLabourUser
     ? await Labour.findOne({
         where: _isSessionAuth ? { userId: requesterUserId } : { id: legacyProfileId },
-        attributes: ["id", "name", "phone", "userId"],
+        attributes: ["id", "userId"],
       })
     : ownerRecord;
   const globalUser = requesterUserId
     ? await db.user.findByPk(requesterUserId, { attributes: ["id", "name", "phone"] })
     : null;
-  const ownerName = globalUser?.name || userRecord?.name || null;
-  const ownerPhone = globalUser?.phone || userRecord?.phone || null;
+  const ownerName = globalUser?.name || null;
+  const ownerPhone = globalUser?.phone || null;
 
   if (skillId && !skillData) {
     return {

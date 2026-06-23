@@ -67,7 +67,6 @@ const ensureSchema = async (db) => {
     userId: { type: db.Sequelize.INTEGER, allowNull: true },
     registeredFrom: registeredFromEnum,
     labourCode: { type: db.Sequelize.STRING, allowNull: true, unique: true },
-    status: { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
     isAvailable: { type: db.Sequelize.BOOLEAN, allowNull: true, defaultValue: true },
     isVerified: { type: db.Sequelize.BOOLEAN, allowNull: false, defaultValue: false },
     experienceYears: { type: db.Sequelize.INTEGER, allowNull: true, defaultValue: 0 },
@@ -79,8 +78,6 @@ const ensureSchema = async (db) => {
     registeredFrom: registeredFromEnum,
     categoryId: { type: db.Sequelize.INTEGER, allowNull: true },
     skillId: { type: db.Sequelize.INTEGER, allowNull: true },
-    status: { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
-    isActive: { type: db.Sequelize.BOOLEAN, allowNull: true, defaultValue: true },
     createdById: { type: db.Sequelize.INTEGER, allowNull: true },
     updatedById: { type: db.Sequelize.INTEGER, allowNull: true },
   };
@@ -343,12 +340,10 @@ const ensureSchema = async (db) => {
     await db.sequelize.query(`
       UPDATE "orders" AS o
       SET
-        "ownerName" = COALESCE(NULLIF(o."ownerName", ''), la.name, ow_u.name, ow_o.name),
-        "ownerPhone" = COALESCE(NULLIF(o."ownerPhone", ''), la.phone, ow_u.phone, ow_o.phone)
+        "ownerName"  = COALESCE(NULLIF(o."ownerName",  ''), u.name),
+        "ownerPhone" = COALESCE(NULLIF(o."ownerPhone", ''), u.phone)
       FROM "orderMappings" AS m
-      LEFT JOIN "labours" AS la   ON la.id   = m."userId"
-      LEFT JOIN "owners"  AS ow_u ON ow_u.id = m."userId"
-      LEFT JOIN "owners"  AS ow_o ON ow_o.id = m."ownerId"
+      LEFT JOIN "users" AS u ON u.id = m."userId"
       WHERE m."orderId" = o.id
         AND m."userType" = 'owner'
         AND (NULLIF(o."ownerName", '') IS NULL OR NULLIF(o."ownerPhone", '') IS NULL)
@@ -358,11 +353,15 @@ const ensureSchema = async (db) => {
     console.warn("Order ownerName backfill skipped:", e.message);
   }
 
-  await ensureIndex(queryInterface, "labours", ["stateId"], "idx_labours_state_id");
-  await ensureIndex(queryInterface, "labours", ["districtId"], "idx_labours_district_id");
-  await ensureIndex(queryInterface, "labours", ["pincodeId"], "idx_labours_pincode_id");
-  await ensureIndex(queryInterface, "labours", ["postOfficeId"], "idx_labours_post_office_id");
-  await ensureIndex(queryInterface, "labours", ["pincode"], "idx_labours_pincode");
+  // location indexes on labours — column may not exist on fresh installs (location now in users)
+  for (const [fields, name] of [
+    [["stateId"],     "idx_labours_state_id"],
+    [["districtId"],  "idx_labours_district_id"],
+    [["pincodeId"],   "idx_labours_pincode_id"],
+    [["postOfficeId"],"idx_labours_post_office_id"],
+    [["pincode"],     "idx_labours_pincode"],
+  ]) { try { await ensureIndex(queryInterface, "labours", fields, name); } catch (e) { /* column not present */ } }
+
   await ensureIndex(queryInterface, "labours", ["isVerified"], "idx_labours_is_verified");
   await ensureIndex(queryInterface, "labours", ["labourCode"], "idx_labours_labour_code");
   await ensureIndex(queryInterface, "labourSkills", ["skillId"], "idx_labour_skills_skill_id");
@@ -574,11 +573,47 @@ const ensureSchema = async (db) => {
       ON "labourSkills" ("labourUserId", "skillId")
       WHERE "labourUserId" IS NOT NULL
   `);
-  await db.sequelize.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS "uq_work_attendance_assignment_date"
-      ON "workAttendances" ("assignmentId", "attendanceDate")
-      WHERE "assignmentId" IS NOT NULL
-  `);
+  try {
+    await db.sequelize.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "uq_work_attendance_assignment_date"
+        ON "workAttendances" ("assignmentId", "attendanceDate")
+        WHERE "assignmentId" IS NOT NULL
+    `);
+  } catch (e) { /* column not yet added — ensureColumn will handle it */ }
+
+  // Backfill labourCode for existing labours that have NULL labourCode
+  try {
+    const nullCodes = await db.sequelize.query(
+      `SELECT id FROM "labours" WHERE "labourCode" IS NULL`,
+      { type: db.Sequelize.QueryTypes.SELECT }
+    );
+    for (const row of nullCodes) {
+      let code = null;
+      for (let i = 0; i < 8; i++) {
+        const candidate = `LAB-${Math.floor(100000 + Math.random() * 900000)}`;
+        const [exists] = await db.sequelize.query(
+          `SELECT 1 FROM "labours" WHERE "labourCode" = :code LIMIT 1`,
+          { replacements: { code: candidate }, type: db.Sequelize.QueryTypes.SELECT }
+        );
+        if (!exists) { code = candidate; break; }
+      }
+      if (!code) code = `LAB-${Date.now().toString().slice(-6)}`;
+      await db.sequelize.query(`UPDATE "labours" SET "labourCode" = :code WHERE id = :id`, { replacements: { code, id: row.id } });
+    }
+    if (nullCodes.length > 0) console.log(`Backfilled labourCode for ${nullCodes.length} labours`);
+  } catch (e) { console.warn("labourCode backfill skipped:", e.message); }
+
+  // Remove name/phone from labours and owners — now canonical in users table only
+  for (const col of ["name", "phone"]) {
+    try { await db.sequelize.query(`ALTER TABLE "labours" DROP COLUMN IF EXISTS "${col}"`); } catch (e) { /* already gone */ }
+    try { await db.sequelize.query(`ALTER TABLE "owners"  DROP COLUMN IF EXISTS "${col}"`); } catch (e) { /* already gone */ }
+  }
+
+  // Remove isActive + status from owners, status from labours — now canonical in users table only
+  for (const col of ["isActive", "status"]) {
+    try { await db.sequelize.query(`ALTER TABLE "owners" DROP COLUMN IF EXISTS "${col}"`); } catch (e) { /* already gone */ }
+  }
+  try { await db.sequelize.query(`ALTER TABLE "labours" DROP COLUMN IF EXISTS "status"`); } catch (e) { /* already gone */ }
 
   // Drop NOT NULL constraints on authOtps columns that the new model no longer provides
   try {

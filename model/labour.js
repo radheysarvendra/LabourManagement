@@ -11,15 +11,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    phone: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      unique: true,
-    },
     labourCode: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -42,11 +33,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true,
       defaultValue: "labour",
-    },
-    status: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      defaultValue: 1,
     },
     createdById: {
       type: DataTypes.INTEGER,

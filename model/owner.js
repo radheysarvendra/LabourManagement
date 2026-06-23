@@ -11,15 +11,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    phone: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      unique: true,
-    },
     workType: {
       type: DataTypes.ENUM("home_repair", "construction", "both"),
       allowNull: false,
@@ -33,19 +24,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
-    isActive: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: true,
-    },
     registeredFrom: {
       type: DataTypes.STRING,
       allowNull: true,
       defaultValue: "owner",
-    },
-    status: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      defaultValue: 1,
     },
     createdById: {
       type: DataTypes.INTEGER,

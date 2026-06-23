@@ -14,12 +14,14 @@ const bookingInclude = [
       {
         model: Labour,
         as: "labour",
+        include: [{ model: db.user, as: "user", attributes: ["id", "name", "phone"] }],
       },
     ],
   },
   {
     model: Owner,
     as: "owner",
+    include: [{ model: db.user, as: "user", attributes: ["id", "name", "phone"] }],
   },
 ];
 
@@ -103,7 +105,10 @@ const createBookingService = async (payload) => {
     };
   }
 
-  const ownerData = ownerId ? await Owner.findOne({ where: { id: ownerId } }) : null;
+  const ownerData = ownerId ? await Owner.findOne({
+    where: { id: ownerId },
+    include: [{ model: db.user, as: "user", attributes: ["id", "name", "phone"] }],
+  }) : null;
   const searchResult = await labourService.searchLaboursService({
     stateId,
     districtId,
@@ -135,8 +140,8 @@ const createBookingService = async (payload) => {
     const createdBooking = await Booking.create({
       bookingCode: await generateBookingCode(),
       ownerId: ownerId || null,
-      ownerName: ownerName || ownerData?.name || null,
-      ownerPhone: ownerPhone || ownerData?.phone || null,
+      ownerName: ownerName || ownerData?.user?.name || null,
+      ownerPhone: ownerPhone || ownerData?.user?.phone || null,
       categoryName,
       skill,
       stateId: stateId || null,
