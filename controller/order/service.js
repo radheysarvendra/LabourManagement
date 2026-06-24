@@ -370,16 +370,22 @@ const createOrderService = async (payload) => {
     ? await resolveUserIds([createdOwnerM.userId])
     : {};
 
+  const mappedOrder = mapOrder(createdData, createdUserMap);
   return {
     statusCode: 201,
     body: {
       success: true,
       message: "Order submitted and awaiting admin approval",
+      // Top-level fields the app reads directly
+      id: mappedOrder.id,
+      orderCode: mappedOrder.orderCode,
+      status: mappedOrder.status,
+      createdAt: mappedOrder.createdAt,
       requiredCount,
       allocatedCount: 0,
       matchedCount: availability.matchedCount,
       data: {
-        ...mapOrder(createdData, createdUserMap),
+        ...mappedOrder,
         matchedCount: availability.matchedCount,
         assignedProviderCount: 0,
       },
