@@ -93,6 +93,16 @@ const updateOrderMappingStatus = async (req,res) => {
   }
 };
 
+const cancelOrder = async (req, res) => {
+  try {
+    const requesterUserId = req.user?.sessionId ? req.user.userId : (req.user?.userId || req.user?.id);
+    const result = await orderService.cancelOrderService(req.params.id, requesterUserId);
+    return res.status(result.statusCode).send(result.body);
+  } catch (err) {
+    return res.status(500).send({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   createOrder,
   getOrders,
@@ -100,4 +110,5 @@ module.exports = {
   updateOrderAdminStatus,
   approveOrder,
   updateOrderMappingStatus,
+  cancelOrder,
 };

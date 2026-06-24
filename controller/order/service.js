@@ -248,52 +248,6 @@ const createOrderService = async (payload) => {
     };
   }
 
-  // Prevent duplicate order — same owner + same skill + pending/assigned status
-  // Skip for admin-created orders (admin can create on behalf of any user)
-  if (!_isAdminRequest) {
-    let existingOrder = null;
-
-    if (legacyProfileId) {
-      // Old-flow: check via OrderMapping.userId (owner profile id)
-      existingOrder = await Order.findOne({
-        where: {
-          ...(pincode ? { pincode } : {}),
-          ...(skillId ? { skillId } : skill ? { skill } : {}),
-          status: ["pending", "assigned"],
-        },
-        include: [{
-          model: OrderMapping,
-          as: "mappings",
-          required: true,
-          where: { userId: legacyProfileId, userType: "owner" },
-        }],
-      });
-    }
-
-    // New-flow fallback: check via createdByUserId on the order itself
-    if (!existingOrder && requesterUserId) {
-      existingOrder = await Order.findOne({
-        where: {
-          createdByUserId: requesterUserId,
-          ...(skillId ? { skillId } : skill ? { skill } : {}),
-          status: ["pending", "assigned"],
-        },
-      });
-    }
-
-    if (existingOrder) {
-      return {
-        statusCode: 409,
-        body: {
-          success: false,
-          message: "Aapka ek order already pending hai isi skill ke liye.",
-          existingOrderId: existingOrder.id,
-          existingOrderCode: existingOrder.orderCode,
-        },
-      };
-    }
-  }
-
   const skillData = skillId ? await Skill.findOne({ where: { id: skillId } }) : null;
   const categoryData = categoryId ? await Category.findOne({ where: { id: categoryId } }) : null;
   const skillName = skill || skillData?.skillName;
@@ -873,6 +827,37 @@ const updateOrderMappingStatusService = async (id, { status }) => {
   return getOrderByIdService(mapping.orderId);
 };
 
+const cancelOrderService = async (orderId, requesterUserId) => {
+  const order = await Order.findByPk(orderId, {
+    include: [{ model: OrderMapping, as: "mappings", where: { userType: "owner" }, required: false }],
+  });
+
+  if (!order) {
+    return { statusCode: 404, body: { success: false, message: "Order not found" } };
+  }
+
+  if (!["pending"].includes(order.status)) {
+    return {
+      statusCode: 400,
+      body: { success: false, message: "Sirf pending orders cancel ho sakti hain. Assigned order cancel nahi ho sakta." },
+    };
+  }
+
+  // Verify ownership via createdByUserId or owner mapping
+  const ownerMapping = order.mappings?.find((m) => m.userType === "owner");
+  const isOwner =
+    (requesterUserId && Number(order.createdByUserId) === Number(requesterUserId)) ||
+    (ownerMapping && (Number(ownerMapping.userId) === Number(requesterUserId) || Number(ownerMapping.ownerId) === Number(requesterUserId)));
+
+  if (!isOwner) {
+    return { statusCode: 403, body: { success: false, message: "Aap is order ko cancel nahi kar sakte." } };
+  }
+
+  await order.update({ status: "cancelled" });
+
+  return { statusCode: 200, body: { success: true, message: "Order cancel ho gayi.", orderId: order.id, orderCode: order.orderCode } };
+};
+
 module.exports = {
   createOrderService,
   getOrdersService,
@@ -880,4 +865,5 @@ module.exports = {
   updateOrderAdminStatusService,
   approveOrderService,
   updateOrderMappingStatusService,
+  cancelOrderService,
 };

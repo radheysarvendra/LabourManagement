@@ -124,6 +124,7 @@ router.get("/api/labour/:labourId/orders", verifyToken, (req, res) => {
   return orderController.getOrders(req, res);
 });
 router.get("/api/orders/:id", verifyToken, orderController.getOrderById);
+router.delete("/api/orders/:id/cancel", verifyToken, orderController.cancelOrder);
 router.put("/api/orders/:id/admin-status", verifyAdminToken, allowAdminModule("orders", "canApprove"), orderController.updateOrderAdminStatus);
 router.put("/api/order-mappings/:id/status", verifyToken, orderController.updateOrderMappingStatus);
 router.post("/api/work-assignments", verifyToken, workAssignmentController.createWorkAssignment);
