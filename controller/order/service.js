@@ -210,10 +210,17 @@ const createOrderService = async (payload) => {
     };
   }
 
-  if ((!skill && !skillId) || !pincode) {
+  if (!skill && !skillId) {
     return {
       statusCode: 400,
-      body: { success: false, message: "Skill and PIN code are required" },
+      body: { success: false, message: "Skill is required" },
+    };
+  }
+  // Pincode required for user/mobile orders; optional for admin-created orders
+  if (!pincode && !_isAdminRequest) {
+    return {
+      statusCode: 400,
+      body: { success: false, message: "PIN code is required" },
     };
   }
 
@@ -276,8 +283,18 @@ const createOrderService = async (payload) => {
   const globalUser = requesterUserId
     ? await db.user.findByPk(requesterUserId, { attributes: ["id", "name", "phone"] })
     : null;
-  const ownerName = globalUser?.name || null;
-  const ownerPhone = globalUser?.phone || null;
+  let ownerName = globalUser?.name || null;
+  let ownerPhone = globalUser?.phone || null;
+
+  // For admin-created orders, look up the target owner's user record
+  if (_isAdminRequest && adminOwnerId && (!ownerName || !ownerPhone)) {
+    const targetOwner = await Owner.findOne({
+      where: { id: adminOwnerId },
+      include: [{ model: db.user, as: "user", attributes: ["name", "phone"] }],
+    });
+    ownerName  = targetOwner?.user?.name  || ownerName  || null;
+    ownerPhone = targetOwner?.user?.phone || ownerPhone || null;
+  }
 
   if (skillId && !skillData) {
     return {
@@ -331,7 +348,7 @@ const createOrderService = async (payload) => {
       postOfficeId: postOfficeId || null,
       state: state || null,
       district: district || null,
-      pincode,
+      pincode: pincode || "",
       postOffice: postOffice || null,
       address: address || null,
       requiredDate: requiredDate || null,
