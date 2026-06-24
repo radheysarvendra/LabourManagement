@@ -15,9 +15,10 @@ const newAuthController = require("../controller/auth/index");
 const roleController = require("../controller/Permission_roles/index");
 const adminController = require("../controller/admin/index");
 const ratingController = require("../controller/rating/index");
-const orderPaymentController   = require("../controller/orderPayment/index");
+const orderPaymentController        = require("../controller/orderPayment/index");
 const contractorLeadController      = require("../controller/contractorLead/index");
 const labourVerificationController  = require("../controller/labourVerification/index");
+const paymentController             = require("../controller/payment/index");
 const { verifyAdminToken, allowAdminModule } = require("../middleware/adminAuth");
 const { verifyToken } = require("../middleware/auth");
 const upload = require("../middleware/upload");
@@ -175,6 +176,11 @@ router.put("/api/orders/:orderId/payment/:milestoneId/pay",   verifyToken, order
 router.put("/api/orders/:orderId/payment/refund-before-work", verifyToken, orderPaymentController.refundBeforeWork);
 // Admin
 router.get("/api/admin/order-payments", verifyAdminToken, orderPaymentController.getAllOrderPayments);
+
+// ── UPI Payment ──────────────────────────────────────────────────────────────
+router.get("/api/payment/config",   paymentController.getPaymentConfig);          // public — app fetches UPI ID
+router.post("/api/payment/verify",  verifyToken, paymentController.verifyPayment); // record UPI txn after pay
+router.get("/api/payment/history",  verifyToken, paymentController.getPaymentHistory); // user payment history
 
 // ── Contractor fee tiers (public) ────────────────────────────────────────────
 router.get("/api/platform-fees/contractor-tiers", (req, res) => {

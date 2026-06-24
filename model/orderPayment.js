@@ -56,6 +56,21 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: null,
     },
+    transactionId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: null,
+    },
+    upiRef: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: null,
+    },
+    paymentMethod: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      defaultValue: "upi",
+    },
   }, {
     tableName: "orderPayments",
     timestamps: true,
