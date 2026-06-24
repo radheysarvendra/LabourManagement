@@ -38,10 +38,14 @@ const verifyPaymentService = async (payload, userId) => {
     milestoneId,
     leadId,
     amount,
-    transactionId,
     upiRef,
     paidAt,
   } = payload;
+
+  const paymentMethod = payload.paymentMethod || "upi";
+  const isCash = paymentMethod === "cod" || paymentMethod === "cash";
+  // Cash payments don't have a transaction ID — generate a reference
+  const transactionId = payload.transactionId || (isCash ? `CASH-${Date.now()}` : null);
 
   if (!paymentType)    return bad("paymentType is required");
   if (!transactionId)  return bad("transactionId is required");

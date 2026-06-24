@@ -129,8 +129,9 @@ const mapOrder = (order, userMap = {}) => {
 
   return {
     ...json,
-    ownerName: json.ownerName || null,
-    ownerPhone: json.ownerPhone || null,
+    ownerId: ownerMappingRaw?.ownerId || ownerMappingRaw?.userId || null,
+    ownerName: resolvedOwner?.name || json.ownerName || null,
+    ownerPhone: resolvedOwner?.phone || json.ownerPhone || null,
     requiredLabourCount: json.labourRequired,
     assignedLabourCount: json.labourAllocated,
     category: json.categoryDetail

@@ -26,6 +26,22 @@ const MILESTONES = [
   { milestone: "after_completion", milestonePercent: 30 },
 ];
 
+// Frontend-friendly type aliases
+const MILESTONE_TYPE = {
+  before_work:      "advance",
+  during_work:      "midway",
+  after_completion: "completion",
+};
+
+const serializeMilestone = (m) => {
+  const json = m.toJSON ? m.toJSON() : m;
+  return {
+    ...json,
+    type:   MILESTONE_TYPE[json.milestone] || json.milestone,
+    amount: json.milestoneAmount,
+  };
+};
+
 // ── initiate payment milestones ───────────────────────────────────────────────
 
 const initiateOrderPaymentService = async ({ orderId, jobValue }) => {
@@ -73,7 +89,7 @@ const initiateOrderPaymentService = async ({ orderId, jobValue }) => {
       serviceFeeNote: jv >= 40000
         ? "No service fee — platform earns from contractor side"
         : `3% of ₹${jv} (min ₹30)`,
-      milestones: rows,
+      milestones: rows.map(serializeMilestone),
     },
     "Payment milestones created successfully"
   );
@@ -108,7 +124,7 @@ const getOrderPaymentService = async (orderId) => {
     totalDue: parseFloat(totalDue.toFixed(2)),
     totalPaid: parseFloat(totalPaid.toFixed(2)),
     balance: parseFloat((totalDue - totalPaid).toFixed(2)),
-    milestones,
+    milestones: milestones.map(serializeMilestone),
   });
 };
 

@@ -420,14 +420,34 @@ const verifyOtp = async (req, res) => {
       await otpRecord.update({ verifiedAt: new Date() });
       const { token } = await generateSession(globalUser.id, selectedRole);
 
+      // Resolve legacy profile IDs so the app can use ownerId/labourId/contractorId
+      const roleCode = String(selectedRole).toUpperCase();
+      let labourId = null, ownerId = null, contractorId = null;
+      if (roleCode === "LABOUR") {
+        const lp = await Labour.findOne({ where: { userId: globalUser.id }, attributes: ["id"] });
+        labourId = lp?.id || null;
+      } else {
+        const op = await Owner.findOne({ where: { userId: globalUser.id }, attributes: ["id"] });
+        ownerId = op?.id || null;
+        if (roleCode === "CONTRACTOR") contractorId = ownerId;
+      }
+      const userType = roleCode === "LABOUR" ? "labour" : roleCode === "CONTRACTOR" ? "contractor" : "owner";
+      const profile  = { id: ownerId || labourId || globalUser.id, name: globalUser.name, phone: globalUser.phone };
+
       return res.status(200).send({
         success: true,
         message: "Login successful",
         token,
         userId: globalUser.id,
         activeRole: selectedRole,
+        userType,
+        isRegistered: true,
         roles,
-        user: { id: globalUser.id, name: globalUser.name, phone: globalUser.phone },
+        profile,
+        user: profile,
+        labourId,
+        ownerId,
+        contractorId,
         flow: "new",
       });
     }
@@ -604,11 +624,15 @@ const checkPhone = async (req, res) => {
 
     if (globalUser && globalUser.userRoles && globalUser.userRoles.length > 0) {
       const roles = globalUser.userRoles.map((ur) => ur.appRole?.code).filter(Boolean);
+      const primaryRole = roles[0] || null;
+      const userType = primaryRole ? primaryRole.toLowerCase() : null;
       return res.status(200).send({
         success: true,
+        exists: true,
         isRegistered: true,
         phone,
         userId: globalUser.id,
+        userType,
         roles,
         flow: "new",
         message: "User is already registered",
@@ -621,8 +645,10 @@ const checkPhone = async (req, res) => {
     if (users.length === 0) {
       return res.status(200).send({
         success: true,
+        exists: false,
         isRegistered: false,
         phone,
+        userType: null,
         message: "User not registered. Registration required.",
       });
     }
@@ -631,9 +657,11 @@ const checkPhone = async (req, res) => {
 
     return res.status(200).send({
       success: true,
+      exists: true,
       isRegistered: true,
       phone,
       userId: primary.user.id,
+      userType: primary.userType,
       registeredFrom: primary.user.registeredFrom || primary.userType,
       roles: users.map((item) => item.userType),
       flow: "legacy",
