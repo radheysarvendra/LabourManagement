@@ -1,13 +1,17 @@
 const orderService = require("./service");
 
-const createOrder = async (req,res) => {
+const createOrder = async (req, res) => {
   try {
+    const isAdminRequest = Boolean(req.admin);
     const result = await orderService.createOrderService({
       ...req.body,
-      _userType: req.user?.type || req.user?.userType,
-      _authenticatedUserId: req.user?.userId || req.user?.id,
+      _userType: req.user?.type || req.user?.userType || null,
+      _authenticatedUserId: isAdminRequest
+        ? (req.body.userId || req.body.ownerId || null)
+        : (req.user?.userId || req.user?.id),
       _activeRole: req.user?.activeRole || null,
       _isSessionAuth: Boolean(req.user?.sessionId),
+      _isAdminRequest: isAdminRequest,
     });
     return res.status(result.statusCode).send(result.body);
   } catch (err) {

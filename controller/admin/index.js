@@ -330,6 +330,50 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
+const getAllUsers = async (req, res) => {
+  try {
+    const page      = Math.max(Number(req.query.page)  || 1, 1);
+    const limit     = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+    const offset    = (page - 1) * limit;
+    const search    = String(req.query.search || "").trim();
+    const status    = req.query.status || null;
+
+    const where = {};
+    if (status) where.accountStatus = status;
+    if (search) {
+      where[Op.or] = [
+        { name:  { [Op.iLike]: `%${search}%` } },
+        { phone: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    const User = db.user;
+    const result = await User.findAndCountAll({
+      where,
+      attributes: { exclude: ["deletedAt"] },
+      include: [
+        { model: db.labour, as: "labourProfile", required: false, attributes: ["id", "registeredFrom"] },
+        { model: db.owner,  as: "ownerProfile",  required: false, attributes: ["id", "registeredFrom", "workType"] },
+      ],
+      distinct: true,
+      order: [["id", "DESC"]],
+      limit,
+      offset,
+    });
+
+    return res.status(200).json({
+      success: true,
+      total: result.count,
+      page,
+      limit,
+      totalPages: Math.ceil(result.count / limit),
+      data: result.rows,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   ensureDefaultAdmin,
   loginAdmin,
@@ -339,5 +383,6 @@ module.exports = {
   createPermission,
   getPermissionMatrix,
   getDashboardStats,
+  getAllUsers,
 };
 

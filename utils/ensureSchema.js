@@ -649,6 +649,25 @@ const ensureSchema = async (db) => {
     await ensureColumn(queryInterface, "workAttendances", col, def);
   }
 
+  // Add UPI payment tracking columns to orderPayments
+  const orderPaymentUpiColumns = {
+    transactionId: { type: db.Sequelize.STRING, allowNull: true },
+    upiRef:        { type: db.Sequelize.STRING, allowNull: true },
+    paymentMethod: { type: db.Sequelize.STRING(20), allowNull: true, defaultValue: "upi" },
+  };
+  for (const [col, def] of Object.entries(orderPaymentUpiColumns)) {
+    await ensureColumn(queryInterface, "orderPayments", col, def);
+  }
+
+  // Add UPI payment tracking columns to contractorLeads
+  const contractorLeadUpiColumns = {
+    transactionId: { type: db.Sequelize.STRING, allowNull: true },
+    upiRef:        { type: db.Sequelize.STRING, allowNull: true },
+  };
+  for (const [col, def] of Object.entries(contractorLeadUpiColumns)) {
+    await ensureColumn(queryInterface, "contractorLeads", col, def);
+  }
+
   // Seed default app roles
   try {
     await db.sequelize.query(`

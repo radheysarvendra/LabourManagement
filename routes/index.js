@@ -15,9 +15,10 @@ const newAuthController = require("../controller/auth/index");
 const roleController = require("../controller/Permission_roles/index");
 const adminController = require("../controller/admin/index");
 const ratingController = require("../controller/rating/index");
-const orderPaymentController   = require("../controller/orderPayment/index");
+const orderPaymentController        = require("../controller/orderPayment/index");
 const contractorLeadController      = require("../controller/contractorLead/index");
 const labourVerificationController  = require("../controller/labourVerification/index");
+const paymentController             = require("../controller/payment/index");
 const { verifyAdminToken, allowAdminModule } = require("../middleware/adminAuth");
 const { verifyToken } = require("../middleware/auth");
 const upload = require("../middleware/upload");
@@ -176,6 +177,11 @@ router.put("/api/orders/:orderId/payment/refund-before-work", verifyToken, order
 // Admin
 router.get("/api/admin/order-payments", verifyAdminToken, orderPaymentController.getAllOrderPayments);
 
+// ── UPI Payment ──────────────────────────────────────────────────────────────
+router.get("/api/payment/config",   paymentController.getPaymentConfig);          // public — app fetches UPI ID
+router.post("/api/payment/verify",  verifyToken, paymentController.verifyPayment); // record UPI txn after pay
+router.get("/api/payment/history",  verifyToken, paymentController.getPaymentHistory); // user payment history
+
 // ── Contractor fee tiers (public) ────────────────────────────────────────────
 router.get("/api/platform-fees/contractor-tiers", (req, res) => {
   res.status(200).json({
@@ -241,6 +247,7 @@ router.get("/api/admin/profile", verifyAdminToken, adminController.getAdminProfi
 router.get("/api/admin/dashboard/stats", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getDashboardStats);
 router.post("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canCreate"), adminController.createAdmin);
 router.get("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canView"), adminController.getAdmins);
+router.get("/api/admin/users", verifyAdminToken, allowAdminModule("users", "canView"), adminController.getAllUsers);
 router.post("/api/admin/permissions", verifyAdminToken, allowAdminModule("permissions", "canCreate"), adminController.createPermission);
 router.get("/api/admin/permissions/matrix", verifyAdminToken, allowAdminModule("permissions", "canView"), adminController.getPermissionMatrix);
 router.post("/api/admin/roles", verifyAdminToken, allowAdminModule("roles", "canCreate"), roleController.createRole);
