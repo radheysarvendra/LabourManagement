@@ -68,18 +68,8 @@ const resolveUserIds = async (userIds) => {
   return map;
 };
 
-const generateOrderCode = async () => {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const code = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
-    const existing = await Order.findOne({ where: { orderCode: code } });
+const formatOrderCode = (id) => `ORD-${String(id).padStart(5, "0")}`;
 
-    if (!existing) {
-      return code;
-    }
-  }
-
-  return `ORD-${Date.now().toString().slice(-6)}`;
-};
 
 const getRequiredLabourCount = (payload) => (
   Number(payload.requiredProviderCount ?? payload.requiredLabourCount ?? payload.labourRequired) || 1
@@ -180,6 +170,7 @@ const createOrderService = async (payload) => {
     _authenticatedUserId,
     _activeRole,
     _isSessionAuth,
+    _isAdminRequest,
     categoryId,
     categoryName,
     skillId,
@@ -199,7 +190,7 @@ const createOrderService = async (payload) => {
   const requiredCount = getRequiredLabourCount(payload);
   const needType = normalizeNeedType(payload);
   const requesterUserId = _isSessionAuth ? Number(_authenticatedUserId) : null;
-  let legacyProfileId = _isSessionAuth ? null : Number(_authenticatedUserId || userId);
+  let legacyProfileId = _isSessionAuth ? null : Number(_authenticatedUserId || userId) || null;
 
   if (_isSessionAuth) {
     const profile = _activeRole === "LABOUR"
@@ -208,7 +199,10 @@ const createOrderService = async (payload) => {
     legacyProfileId = profile?.id || null;
   }
 
-  if (!requesterUserId && !legacyProfileId) {
+  // Admin-created orders: userId/ownerId from request body identifies the owner
+  const adminOwnerId = _isAdminRequest ? (Number(ownerId) || null) : null;
+
+  if (!requesterUserId && !legacyProfileId && !_isAdminRequest) {
     return {
       statusCode: 400,
       body: { success: false, message: "Authenticated user ID is required" },
@@ -229,32 +223,35 @@ const createOrderService = async (payload) => {
     };
   }
 
-  // Prevent duplicate order — same owner + same skill + same pincode + same date + pending/assigned
-  const existingOrder = await Order.findOne({
-    where: {
-      pincode,
-      skillId: skillId || null,
-      skill: skill || null,
-      status: ["pending", "assigned"],
-    },
-    include: [{
-      model: OrderMapping,
-      as: "mappings",
-      required: true,
-      where: { userId: legacyProfileId, userType: "owner" },
-    }],
-  });
-
-  if (existingOrder) {
-    return {
-      statusCode: 409,
-      body: {
-        success: false,
-        message: "Aapka ek order already pending hai isi skill aur pincode ke liye.",
-        existingOrderId: existingOrder.id,
-        existingOrderCode: existingOrder.orderCode,
+  // Prevent duplicate order — same owner + same skill + same pincode + pending/assigned
+  // Skip for admin-created orders (admin can create on behalf of any user)
+  // Skip if legacyProfileId is null (can't reliably identify owner — avoids false positives)
+  if (legacyProfileId && !_isAdminRequest) {
+    const existingOrder = await Order.findOne({
+      where: {
+        pincode,
+        ...(skillId ? { skillId } : skill ? { skill } : {}),
+        status: ["pending", "assigned"],
       },
-    };
+      include: [{
+        model: OrderMapping,
+        as: "mappings",
+        required: true,
+        where: { userId: legacyProfileId, userType: "owner" },
+      }],
+    });
+
+    if (existingOrder) {
+      return {
+        statusCode: 409,
+        body: {
+          success: false,
+          message: "Aapka ek order already pending hai isi skill aur pincode ke liye.",
+          existingOrderId: existingOrder.id,
+          existingOrderCode: existingOrder.orderCode,
+        },
+      };
+    }
   }
 
   const skillData = skillId ? await Skill.findOne({ where: { id: skillId } }) : null;
@@ -319,7 +316,7 @@ const createOrderService = async (payload) => {
 
   const order = await db.sequelize.transaction(async (transaction) => {
     const createdOrder = await Order.create({
-      orderCode: await generateOrderCode(),
+      orderCode: `TEMP-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       createdByUserId: requesterUserId || userRecord?.userId || null,
       ownerName,
       ownerPhone,
@@ -345,10 +342,12 @@ const createOrderService = async (payload) => {
       note,
     }, { transaction });
 
+    await createdOrder.update({ orderCode: formatOrderCode(createdOrder.id) }, { transaction });
+
     await OrderMapping.create({
       orderId: createdOrder.id,
-      userId: legacyProfileId,
-      ownerId: ownerId || ownerRecord?.id || null,
+      userId: legacyProfileId || null,
+      ownerId: adminOwnerId || ownerId || ownerRecord?.id || null,
       labourId: null,
       userType: "owner",
       skill: skillName,
