@@ -19,8 +19,14 @@ const orderInclude = [
     model: OrderMapping,
     as: "mappings",
     include: [
-      { model: Owner, as: "owner", required: false },
-      { model: Labour, as: "labour", required: false },
+      {
+        model: Owner, as: "owner", required: false,
+        include: [{ model: User, as: "user", attributes: ["id", "name", "phone"], required: false }],
+      },
+      {
+        model: Labour, as: "labour", required: false,
+        include: [{ model: User, as: "user", attributes: ["id", "name", "phone"], required: false }],
+      },
     ],
   },
 ];
@@ -118,10 +124,16 @@ const mapOrder = (order, userMap = {}) => {
   const needType = json.needType || "labour";
 
   // Fallback chain for owner resolution:
-  // 1. ownerId JOIN (old-flow) → 2. batch-fetched userId record → 3. denormalized ownerName field
+  // 1. owner JOIN user.name (new-flow, owner.user populated) → 2. owner.name (old-flow, direct column)
+  // 3. batch-fetched userId record → 4. ownerId lookup → 5. denormalized ownerName field
   const ownerMappingRaw = mappings.find((item) => item.userType === "owner") || null;
-  const resolvedOwner = ownerMappingRaw?.owner
-    || (ownerMappingRaw?.userId ? userMap[ownerMappingRaw.userId] || null : null)
+  const ownerFromJoin = ownerMappingRaw?.owner || null;
+  // owner.name is null in new-flow (name lives in users table) — prefer owner.user.name
+  const ownerJoinName  = ownerFromJoin?.user?.name  || ownerFromJoin?.name  || null;
+  const ownerJoinPhone = ownerFromJoin?.user?.phone || ownerFromJoin?.phone || null;
+  const resolvedOwner = (ownerJoinName ? { id: ownerFromJoin.id, name: ownerJoinName, phone: ownerJoinPhone } : null)
+    || (ownerMappingRaw?.userId  ? userMap[ownerMappingRaw.userId]  || null : null)
+    || (ownerMappingRaw?.ownerId ? userMap[ownerMappingRaw.ownerId] || null : null)
     || (json.ownerName ? { id: null, name: json.ownerName, phone: json.ownerPhone } : null);
   const ownerMapping = ownerMappingRaw
     ? { ...ownerMappingRaw, owner: resolvedOwner }
@@ -158,7 +170,12 @@ const mapOrder = (order, userMap = {}) => {
     ownerMapping,
     contractorMapping: contractorMappings[0] || null,
     contractorId: contractorMappings[0]?.ownerId || null,
-    labourMappings,
+    // Resolve labour name from user table (new-flow) or direct field (old-flow)
+    labourMappings: labourMappings.map((lm) => ({
+      ...lm,
+      labourName: lm.labour?.user?.name || lm.labour?.name || null,
+      labourPhone: lm.labour?.user?.phone || lm.labour?.phone || null,
+    })),
     contractorMappings,
   };
 };
@@ -231,30 +248,45 @@ const createOrderService = async (payload) => {
     };
   }
 
-  // Prevent duplicate order — same owner + same skill + same pincode + pending/assigned
+  // Prevent duplicate order — same owner + same skill + pending/assigned status
   // Skip for admin-created orders (admin can create on behalf of any user)
-  // Skip if legacyProfileId is null (can't reliably identify owner — avoids false positives)
-  if (legacyProfileId && !_isAdminRequest) {
-    const existingOrder = await Order.findOne({
-      where: {
-        pincode,
-        ...(skillId ? { skillId } : skill ? { skill } : {}),
-        status: ["pending", "assigned"],
-      },
-      include: [{
-        model: OrderMapping,
-        as: "mappings",
-        required: true,
-        where: { userId: legacyProfileId, userType: "owner" },
-      }],
-    });
+  if (!_isAdminRequest) {
+    let existingOrder = null;
+
+    if (legacyProfileId) {
+      // Old-flow: check via OrderMapping.userId (owner profile id)
+      existingOrder = await Order.findOne({
+        where: {
+          ...(pincode ? { pincode } : {}),
+          ...(skillId ? { skillId } : skill ? { skill } : {}),
+          status: ["pending", "assigned"],
+        },
+        include: [{
+          model: OrderMapping,
+          as: "mappings",
+          required: true,
+          where: { userId: legacyProfileId, userType: "owner" },
+        }],
+      });
+    }
+
+    // New-flow fallback: check via createdByUserId on the order itself
+    if (!existingOrder && requesterUserId) {
+      existingOrder = await Order.findOne({
+        where: {
+          createdByUserId: requesterUserId,
+          ...(skillId ? { skillId } : skill ? { skill } : {}),
+          status: ["pending", "assigned"],
+        },
+      });
+    }
 
     if (existingOrder) {
       return {
         statusCode: 409,
         body: {
           success: false,
-          message: "Aapka ek order already pending hai isi skill aur pincode ke liye.",
+          message: "Aapka ek order already pending hai isi skill ke liye.",
           existingOrderId: existingOrder.id,
           existingOrderCode: existingOrder.orderCode,
         },
@@ -383,8 +415,12 @@ const createOrderService = async (payload) => {
 
   const createdJson = createdData.toJSON ? createdData.toJSON() : createdData;
   const createdOwnerM = (createdJson.mappings || []).find((m) => m.userType === "owner");
-  const createdUserMap = createdOwnerM && createdOwnerM.userId && !createdOwnerM.owner
-    ? await resolveUserIds([createdOwnerM.userId])
+  const createdJoinedName = createdOwnerM?.owner?.user?.name || createdOwnerM?.owner?.name;
+  const createdResolveId = !createdJoinedName
+    ? (createdOwnerM?.userId || createdOwnerM?.ownerId || null)
+    : null;
+  const createdUserMap = createdResolveId
+    ? await resolveUserIds([createdResolveId])
     : {};
 
   const mappedOrder = mapOrder(createdData, createdUserMap);
@@ -460,28 +496,34 @@ const getOrdersService = async ({
   const ownerFilterId = userId || ownerId;
 
   if (ownerFilterId || labourId || contractorId) {
-    const mappingsIncludeIndex = include.findIndex((item) => item.as === "mappings");
-    let mappingWhere = {};
-
+    // Strategy: resolve matching orderIds via a separate query so the main
+    // mappings include can load ALL mapping types (owner + labour + contractor).
+    // Previously, adding WHERE on the mappings include filtered out labour/contractor
+    // mappings from the result, making labourMappings always empty for owner queries.
+    let matchingOrderIds;
     if (ownerFilterId) {
-      mappingWhere = {
-        userType: "owner",
-        [Op.or]: [
-          { userId: Number(ownerFilterId) },
-          { ownerId: Number(ownerFilterId) },
-        ],
-      };
+      const rows = await OrderMapping.findAll({
+        where: {
+          userType: "owner",
+          [Op.or]: [{ userId: Number(ownerFilterId) }, { ownerId: Number(ownerFilterId) }],
+        },
+        attributes: ["orderId"],
+      });
+      matchingOrderIds = rows.map((r) => r.orderId);
     } else if (labourId) {
-      mappingWhere = { labourId, userType: "labour" };
-    } else if (contractorId) {
-      mappingWhere = { ownerId: Number(contractorId), userType: "contractor" };
+      const rows = await OrderMapping.findAll({
+        where: { labourId, userType: "labour" },
+        attributes: ["orderId"],
+      });
+      matchingOrderIds = rows.map((r) => r.orderId);
+    } else {
+      const rows = await OrderMapping.findAll({
+        where: { ownerId: Number(contractorId), userType: "contractor" },
+        attributes: ["orderId"],
+      });
+      matchingOrderIds = rows.map((r) => r.orderId);
     }
-
-    include[mappingsIncludeIndex] = {
-      ...include[mappingsIncludeIndex],
-      required: true,
-      where: mappingWhere,
-    };
+    where.id = matchingOrderIds.length > 0 ? matchingOrderIds : [-1];
   }
 
   const result = await Order.findAndCountAll({
@@ -497,7 +539,14 @@ const getOrdersService = async ({
   result.rows.forEach((row) => {
     const json = row.toJSON ? row.toJSON() : row;
     const ownerM = (json.mappings || []).find((m) => m.userType === "owner");
-    if (ownerM && ownerM.userId && !ownerM.owner) pendingUserIds.push(ownerM.userId);
+    if (ownerM) {
+      // Skip resolution if name already resolved via JOIN
+      const joinedName = ownerM.owner?.user?.name || ownerM.owner?.name;
+      if (!joinedName) {
+        if (ownerM.userId)       pendingUserIds.push(ownerM.userId);
+        else if (ownerM.ownerId) pendingUserIds.push(ownerM.ownerId);
+      }
+    }
   });
   const userMap = await resolveUserIds([...new Set(pendingUserIds)]);
 
@@ -536,9 +585,9 @@ const getOrderByIdService = async (id, actorUserId = null) => {
 
   const json = data.toJSON ? data.toJSON() : data;
   const ownerM = (json.mappings || []).find((m) => m.userType === "owner");
-  const userMap = ownerM && ownerM.userId && !ownerM.owner
-    ? await resolveUserIds([ownerM.userId])
-    : {};
+  const joinedName = ownerM?.owner?.user?.name || ownerM?.owner?.name;
+  const resolveId = !joinedName ? (ownerM?.userId || ownerM?.ownerId || null) : null;
+  const userMap = resolveId ? await resolveUserIds([resolveId]) : {};
 
   return {
     statusCode: 200,
