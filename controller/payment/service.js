@@ -146,7 +146,7 @@ const getPaymentHistoryService = async (userId, { page = 1, limit = 20 } = {}) =
     include: [{
       model: Order,
       as: "order",
-      where: { ownerId: userId },
+      where: { createdByUserId: userId },
       required: true,
       attributes: ["id", "orderCode", "skill", "status"],
     }],
