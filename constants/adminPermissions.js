@@ -11,6 +11,7 @@ const ADMIN_MODULES = {
   ADMINS: "admins",
   ROLES: "roles",
   PERMISSIONS: "permissions",
+  USERS: "users",
   LABOURS: "labours",
   OWNERS: "owners",
   CONTRACTORS: "contractors",

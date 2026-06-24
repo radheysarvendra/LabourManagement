@@ -247,6 +247,7 @@ router.get("/api/admin/profile", verifyAdminToken, adminController.getAdminProfi
 router.get("/api/admin/dashboard/stats", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getDashboardStats);
 router.post("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canCreate"), adminController.createAdmin);
 router.get("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canView"), adminController.getAdmins);
+router.get("/api/admin/users", verifyAdminToken, allowAdminModule("users", "canView"), adminController.getAllUsers);
 router.post("/api/admin/permissions", verifyAdminToken, allowAdminModule("permissions", "canCreate"), adminController.createPermission);
 router.get("/api/admin/permissions/matrix", verifyAdminToken, allowAdminModule("permissions", "canView"), adminController.getPermissionMatrix);
 router.post("/api/admin/roles", verifyAdminToken, allowAdminModule("roles", "canCreate"), roleController.createRole);
