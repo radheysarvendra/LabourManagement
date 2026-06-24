@@ -107,6 +107,12 @@ const ensureSchema = async (db) => {
     assignedType: { type: db.Sequelize.ENUM("labour", "contractor"), allowNull: true },
     ownerName: stringColumn,
     ownerPhone: stringColumn,
+    paymentStatus:  { type: db.Sequelize.STRING(20), allowNull: true },
+    paymentMethod:  { type: db.Sequelize.STRING(20), allowNull: true },
+    paidAmount:     { type: db.Sequelize.FLOAT,       allowNull: true },
+    transactionId:  { type: db.Sequelize.STRING,      allowNull: true },
+    upiRef:         { type: db.Sequelize.STRING,      allowNull: true },
+    orderPaidAt:    { type: db.Sequelize.DATE,        allowNull: true },
   };
   const bookingColumns = {
     requiredDate: { type: db.Sequelize.DATEONLY, allowNull: true },

@@ -19,12 +19,18 @@ const getPaymentConfigService = () => {
     return { statusCode: 503, body: { success: false, message: "Payment not configured. Contact support." } };
   }
 
-  return ok({
-    upiId,
-    businessName,
-    currency: "INR",
-    deeplink: `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(businessName)}&cu=INR`,
-  }, "Payment config fetched");
+  // Top-level upiId + businessName so the app can read response.upiId directly
+  return {
+    statusCode: 200,
+    body: {
+      success: true,
+      message: "Payment config fetched",
+      upiId,
+      businessName,
+      currency: "INR",
+      deeplink: `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(businessName)}&cu=INR`,
+    },
+  };
 };
 
 // ── POST /api/payment/verify ──────────────────────────────────────────────────
@@ -74,7 +80,7 @@ const verifyPaymentService = async (payload, userId) => {
       paidAt: paidAt ? new Date(paidAt) : new Date(),
       transactionId,
       upiRef: upiRef || null,
-      paymentMethod: "upi",
+      paymentMethod: paymentMethod || "upi",
     });
 
     return ok({
@@ -134,7 +140,36 @@ const verifyPaymentService = async (payload, userId) => {
     }, "Service fee payment recorded");
   }
 
-  return bad(`Invalid paymentType: ${paymentType}. Use milestone | lead_fee | service_fee`);
+  // ── direct order payment (paymentType: "order") ───────────────────────────
+  // Full order payment without milestone split — records payment on the order itself
+  if (paymentType === "order") {
+    if (!orderId) return bad("orderId is required for order payment");
+
+    const order = await Order.findByPk(orderId);
+    if (!order) return notFound("Order not found");
+
+    if (order.paymentStatus) return bad("Payment has already been recorded for this order");
+
+    await order.update({
+      paymentStatus:  "processing",
+      paymentMethod:  paymentMethod,
+      paidAmount:     Number(amount),
+      transactionId:  transactionId,
+      upiRef:         upiRef || null,
+      orderPaidAt:    paidAt ? new Date(paidAt) : new Date(),
+    });
+
+    return {
+      statusCode: 200,
+      body: {
+        success: true,
+        message: "Payment recorded",
+        status:  "processing",
+      },
+    };
+  }
+
+  return bad(`Invalid paymentType: ${paymentType}. Use order | milestone | lead_fee | service_fee`);
 };
 
 // ── GET /api/payment/history ──────────────────────────────────────────────────
