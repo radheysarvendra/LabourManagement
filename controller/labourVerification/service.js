@@ -16,11 +16,11 @@ const forbidden= (msg)                   => ({ statusCode: 403, body: { success:
 // ── submit verification request ───────────────────────────────────────────────
 
 const submitVerificationService = async ({ userId, aadharNumber, documentUrl, cloudinaryPublicId, photoUrl, photoCloudinaryPublicId }) => {
-  if (!aadharNumber && !documentUrl) {
+  if (!documentUrl) {
     return bad("Aadhaar number and document are required");
   }
 
-  // Aadhaar must be exactly 12 digits
+  // Strip spaces/dashes before format-checking
   const cleanAadhar = (aadharNumber || "").replace(/[\s\-]/g, "");
   if (cleanAadhar && !/^\d{12}$/.test(cleanAadhar)) {
     return bad("Aadhaar number must be exactly 12 digits (numbers only)");
@@ -38,11 +38,17 @@ const submitVerificationService = async ({ userId, aadharNumber, documentUrl, cl
     return bad("Your profile is already verified");
   }
 
-  // Delete old temp document from Cloudinary when re-submitting
-  if (profile.cloudinaryPublicId) {
+  // Require aadhaar: must come from the request OR already be stored on profile
+  if (!cleanAadhar && !profile.aadharNumber) {
+    return bad("Aadhaar number is required");
+  }
+
+  // Only delete from temp/ — never touch already-approved verified/ files
+  const isInTemp = id => id && !id.includes("dehaade/verified/");
+  if (isInTemp(profile.cloudinaryPublicId)) {
     await cloudinary.uploader.destroy(profile.cloudinaryPublicId).catch(() => {});
   }
-  if (profile.photoCloudinaryPublicId && photoCloudinaryPublicId && photoCloudinaryPublicId !== profile.photoCloudinaryPublicId) {
+  if (isInTemp(profile.photoCloudinaryPublicId) && photoCloudinaryPublicId && photoCloudinaryPublicId !== profile.photoCloudinaryPublicId) {
     await cloudinary.uploader.destroy(profile.photoCloudinaryPublicId).catch(() => {});
   }
 
@@ -60,7 +66,7 @@ const submitVerificationService = async ({ userId, aadharNumber, documentUrl, cl
   return ok(
     {
       verificationStatus:      "pending",
-      verificationSubmittedAt: profile.verificationSubmittedAt,
+      verificationSubmittedAt: new Date(),
     },
     "Verification request submitted. Admin will review and approve shortly."
   );
@@ -123,7 +129,7 @@ const getVerificationsService = async ({ verificationStatus, userId, page = 1, l
   ]);
 
   const summary = { pending: pendingCount, verified: verifiedCount, rejected: rejectedCount };
-  const totalPages = Math.ceil(count / Number(limit));
+  const totalPages = Math.max(1, Math.ceil(count / Number(limit)));
 
   return ok({ total: count, page: Number(page), limit: Number(limit), totalPages, summary, verifications: rows });
 };
@@ -137,30 +143,34 @@ const approveVerificationService = async (labourUserId, adminId) => {
   if (profile.verificationStatus === "verified") return bad("Already verified");
   if (profile.verificationStatus !== "pending")  return bad("No pending verification request found");
 
-  // Move Cloudinary file from dehaade/temp/ → dehaade/verified/
-  let newDocumentUrl = profile.documentUrl;
-  let newPublicId    = profile.cloudinaryPublicId;
-
-  if (profile.cloudinaryPublicId) {
+  // Move Cloudinary files from dehaade/temp/ → dehaade/verified/
+  const moveToVerified = async (publicId, currentUrl) => {
+    if (!publicId || publicId.includes("dehaade/verified/")) return { url: currentUrl, id: publicId };
     try {
-      const oldId = profile.cloudinaryPublicId;
-      const newId = oldId.replace("dehaade/temp/", "dehaade/verified/");
-      const moved = await cloudinary.uploader.rename(oldId, newId);
-      newDocumentUrl = moved.secure_url;
-      newPublicId    = newId;
+      const newId  = publicId.replace("dehaade/temp/", "dehaade/verified/");
+      const moved  = await cloudinary.uploader.rename(publicId, newId);
+      return { url: moved.secure_url, id: newId };
     } catch (err) {
-      console.warn("Cloudinary rename failed (continuing approval):", err.message);
+      console.warn("Cloudinary rename failed (continuing):", err.message);
+      return { url: currentUrl, id: publicId };
     }
-  }
+  };
+
+  const [doc, photo] = await Promise.all([
+    moveToVerified(profile.cloudinaryPublicId,      profile.documentUrl),
+    moveToVerified(profile.photoCloudinaryPublicId, profile.photoUrl),
+  ]);
 
   await profile.update({
-    verificationStatus: "verified",
-    verifiedByAdminId:  adminId || null,
-    verifiedAt:         new Date(),
-    rejectionReason:    null,
-    documentUrl:        newDocumentUrl,
-    cloudinaryPublicId: newPublicId,
-    isLocked:           true,
+    verificationStatus:      "verified",
+    verifiedByAdminId:       adminId || null,
+    verifiedAt:              new Date(),
+    rejectionReason:         null,
+    documentUrl:             doc.url,
+    cloudinaryPublicId:      doc.id,
+    photoUrl:                photo.url,
+    photoCloudinaryPublicId: photo.id,
+    isLocked:                true,
   });
 
   // Sync isVerified flag on the labours table for fast filtering
@@ -185,18 +195,25 @@ const rejectVerificationService = async (labourUserId, { rejectionReason, adminI
   if (profile.verificationStatus === "verified") return bad("Cannot reject an already verified profile");
   if (profile.verificationStatus !== "pending")  return bad("No pending verification request found");
 
-  // Delete document from Cloudinary temp folder
-  if (profile.cloudinaryPublicId) {
-    await cloudinary.uploader.destroy(profile.cloudinaryPublicId, { resource_type: "image" }).catch(() => {});
-  }
+  // Delete both document and photo from Cloudinary temp folder
+  await Promise.allSettled([
+    profile.cloudinaryPublicId
+      ? cloudinary.uploader.destroy(profile.cloudinaryPublicId, { resource_type: "image" })
+      : Promise.resolve(),
+    profile.photoCloudinaryPublicId
+      ? cloudinary.uploader.destroy(profile.photoCloudinaryPublicId, { resource_type: "image" })
+      : Promise.resolve(),
+  ]);
 
   await profile.update({
-    verificationStatus: "rejected",
+    verificationStatus:      "rejected",
     rejectionReason,
-    verifiedByAdminId:  adminId || null,
-    verifiedAt:         null,
-    documentUrl:        null,
-    cloudinaryPublicId: null,
+    verifiedByAdminId:       adminId || null,
+    verifiedAt:              null,
+    documentUrl:             null,
+    cloudinaryPublicId:      null,
+    photoUrl:                null,
+    photoCloudinaryPublicId: null,
   });
 
   // Sync isVerified flag — rejected labour is not verified

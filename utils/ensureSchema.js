@@ -820,6 +820,10 @@ const ensureSchema = async (db) => {
     documentUrl:             { type: db.Sequelize.TEXT,       allowNull: true },
     rejectionReason:         { type: db.Sequelize.TEXT,       allowNull: true },
     verificationSubmittedAt: { type: db.Sequelize.DATE,       allowNull: true },
+    cloudinaryPublicId:      { type: db.Sequelize.TEXT,       allowNull: true },
+    photoUrl:                { type: db.Sequelize.TEXT,       allowNull: true },
+    photoCloudinaryPublicId: { type: db.Sequelize.TEXT,       allowNull: true },
+    isLocked:                { type: db.Sequelize.BOOLEAN,    allowNull: false, defaultValue: false },
   };
   for (const [col, def] of Object.entries(labourVerificationColumns)) {
     await ensureColumn(queryInterface, "labourProfiles", col, def);
