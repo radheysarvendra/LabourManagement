@@ -3,9 +3,10 @@ const svc = require("./service");
 const submitVerification = async (req, res) => {
   try {
     const result = await svc.submitVerificationService({
-      userId:      req.user?.userId || req.user?.id,
-      aadharNumber: req.body.aadharNumber,
-      documentUrl:  req.body.documentUrl,
+      userId:             req.user?.userId || req.user?.id,
+      aadharNumber:       req.body.aadharNumber,
+      documentUrl:        req.body.documentUrl,
+      cloudinaryPublicId: req.body.cloudinaryPublicId,
     });
     return res.status(result.statusCode).send(result.body);
   } catch (err) {

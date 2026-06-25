@@ -51,6 +51,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATE,
       allowNull: true,
     },
+    cloudinaryPublicId: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
   }, {
     tableName: "labourProfiles",
     timestamps: true,

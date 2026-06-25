@@ -143,13 +143,18 @@ router.put("/api/work-assignments/:id/attendance/:attendanceId", verifyToken, wo
 router.post("/api/work-assignments/:id/payments/generate", verifyToken, workAssignmentController.generatePayment);
 router.get("/api/work-assignments/:id/payments", verifyToken, workAssignmentController.getPayments);
 router.put("/api/work-assignments/:id/payments/:paymentId/status", verifyToken, workAssignmentController.updatePaymentStatus);
-// ── File Upload ───────────────────────────────────────────────────────────────
-router.post("/api/upload", verifyToken, upload.single("file"), (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded" });
-  const host = req.protocol + "://" + req.get("host");
-  const url  = `${host}/uploads/${req.file.filename}`;
-  res.status(200).json({ success: true, url, filename: req.file.filename });
-});
+// ── File Upload (Cloudinary) ──────────────────────────────────────────────────
+router.post(
+  "/api/upload",
+  verifyToken,
+  upload.single("file"),
+  upload.uploadToCloudinary("dehaade/temp"),
+  (req, res) => {
+    if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded" });
+    const { secure_url, public_id } = req.cloudinaryResult || {};
+    res.status(200).json({ success: true, url: secure_url, cloudinaryPublicId: public_id });
+  }
+);
 
 // ── Labour Verification ───────────────────────────────────────────────────────
 router.post("/api/labour/verification/submit",   verifyToken, labourVerificationController.submitVerification);

@@ -505,7 +505,7 @@ const resolveSearchLocation = async ({ stateId, districtId, pincodeId, postOffic
 
 const searchLaboursService = async ({
   stateId, districtId, pincodeId, postOfficeId, pincode, district,
-  skill, isVerified, verificationStatus,
+  skill, isVerified, verificationStatus, phone,
   page = 1, limit = 4, showAll = false,
 }) => {
   const pageNumber = Math.max(Number(page) || 1, 1);
@@ -529,16 +529,18 @@ const searchLaboursService = async ({
   }
 
 
-  // Build location filter on users table
+  // Build location + phone filter on users table
   const userLocationWhere = buildUserLocationWhere(location, { stateId, districtId, pincodeId, postOfficeId });
-  const hasLocationFilter = Object.keys(userLocationWhere).length > 0;
+  const phoneQuery = String(phone || "").trim().replace(/\D/g, "");
+  if (phoneQuery) userLocationWhere.phone = { [Op.like]: `%${phoneQuery}%` };
+  const hasUserFilter = Object.keys(userLocationWhere).length > 0;
 
   const userInclude = {
     model: User,
     as: "user",
-    required: hasLocationFilter,
+    required: hasUserFilter,
     attributes: USER_ATTRIBUTES,
-    ...(hasLocationFilter ? { where: userLocationWhere } : {}),
+    ...(hasUserFilter ? { where: userLocationWhere } : {}),
   };
 
   const requestedSkill = String(skill || "").trim();

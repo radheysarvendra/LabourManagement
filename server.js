@@ -22,6 +22,10 @@ app.use(express.json());
 const path = require("path");
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// Admin panel
+app.get("/admin",           (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
+app.get("/admin/dashboard", (_req, res) => res.sendFile(path.join(__dirname, "public", "dashboard.html")));
+
 // routes
 const routes = require("./routes");
 app.use("", routes);
