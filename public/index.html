@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dehaade Admin — Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg,#eff6ff,#f0f4ff); }
+    .card { box-shadow: 0 8px 32px rgba(11,123,239,0.13); }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center">
+  <div class="card bg-white rounded-2xl p-9 w-full max-w-sm mx-4">
+    <div class="text-center mb-8">
+      <div class="text-5xl mb-3">👷</div>
+      <h1 class="text-2xl font-black text-blue-700">Dehaade</h1>
+      <p class="text-gray-400 text-sm font-semibold mt-1">Admin Panel</p>
+    </div>
+
+    <div id="error" class="hidden bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-xl px-4 py-3 mb-4"></div>
+
+    <form id="loginForm" class="space-y-4">
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Email</label>
+        <input id="email" type="email" placeholder="admin@dehaade.com" autocomplete="email"
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold focus:outline-none focus:border-blue-400 bg-gray-50" />
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Password</label>
+        <input id="password" type="password" placeholder="••••••••" autocomplete="current-password"
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold focus:outline-none focus:border-blue-400 bg-gray-50" />
+      </div>
+      <button type="submit" id="loginBtn"
+        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 rounded-xl transition-colors mt-2 text-sm">
+        Login →
+      </button>
+    </form>
+  </div>
+
+  <script>
+    if (localStorage.getItem('adminToken')) {
+      window.location.href = '/admin/dashboard';
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn   = document.getElementById('loginBtn');
+      const errEl = document.getElementById('error');
+      errEl.classList.add('hidden');
+      btn.textContent = 'Logging in...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/admin/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email:    document.getElementById('email').value.trim(),
+            password: document.getElementById('password').value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Login failed');
+        localStorage.setItem('adminToken', data.token);
+        window.location.href = '/admin/dashboard';
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+        btn.textContent = 'Login →';
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

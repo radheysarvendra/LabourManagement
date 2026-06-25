@@ -305,13 +305,20 @@ const getPermissionMatrix = async (req, res) => {
 
 const getDashboardStats = async (req, res) => {
   try {
-    const [labours, owners, totalOrders, pendingOrders, approvedOrders, bookings] = await Promise.all([
+    const LabourProfile = db.labourProfile;
+    const [
+      labours, owners, totalOrders, pendingOrders, approvedOrders, bookings,
+      verifiedLabours, pendingVerifications, rejectedVerifications,
+    ] = await Promise.all([
       Labour.count(),
       Owner.count(),
       Order.count(),
       Order.count({ where: { adminStatus: "pending" } }),
       Order.count({ where: { adminStatus: "approved" } }),
       Booking.count(),
+      Labour.count({ where: { isVerified: true } }),
+      LabourProfile.count({ where: { verificationStatus: "pending" } }),
+      LabourProfile.count({ where: { verificationStatus: "rejected" } }),
     ]);
 
     return res.status(200).send({
@@ -323,6 +330,9 @@ const getDashboardStats = async (req, res) => {
         pendingOrders,
         approvedOrders,
         bookings,
+        verifiedLabours,
+        pendingVerifications,
+        rejectedVerifications,
       },
     });
   } catch (err) {

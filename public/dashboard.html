@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dehaade Admin Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background: #f0f4ff; }
+    .card { box-shadow: 0 4px 16px rgba(11,123,239,0.10); }
+    .doc-img { width:100%; height:160px; object-fit:cover; border-radius:12px; cursor:pointer; }
+    #lightbox { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88);
+      z-index:1000; align-items:center; justify-content:center; cursor:pointer; }
+    #lightbox.open { display:flex; }
+    #lightbox img { max-width:92vw; max-height:92vh; border-radius:12px; }
+    .tab-btn.active { background:#2563eb; color:#fff; border-color:#2563eb; }
+    .badge-pending  { background:#FEF3C7; color:#92400E; }
+    .badge-verified { background:#D1FAE5; color:#065F46; }
+    .badge-rejected { background:#FEE2E2; color:#991B1B; }
+    .badge-true     { background:#DBEAFE; color:#1D4ED8; }
+    .badge-false    { background:#F3F4F6; color:#6B7280; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+    <div class="flex items-center gap-3">
+      <span class="text-2xl">👷</span>
+      <div>
+        <h1 class="text-base font-black text-blue-700">Dehaade Admin</h1>
+        <p class="text-xs text-gray-400 font-semibold" id="adminEmail">Loading...</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="#stats" class="text-xs font-bold text-gray-500 hover:text-blue-600">Dashboard</a>
+      <button onclick="logout()" class="text-xs font-bold text-red-500 hover:text-red-700 border border-red-200 px-3 py-1.5 rounded-xl">
+        Logout
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6">
+
+    <!-- Stats Row -->
+    <div id="stats" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+      <div class="card bg-white rounded-2xl p-4 text-center col-span-1">
+        <div class="text-2xl font-black text-blue-700"  id="sLabours">—</div>
+        <div class="text-xs font-bold text-gray-400 mt-1">Total Labours</div>
+      </div>
+      <div class="card bg-white rounded-2xl p-4 text-center col-span-1">
+        <div class="text-2xl font-black text-green-600" id="sVerifiedLabours">—</div>
+        <div class="text-xs font-bold text-gray-400 mt-1">✅ Verified</div>
+      </div>
+      <div class="card bg-white rounded-2xl p-4 text-center col-span-1">
+        <div class="text-2xl font-black text-yellow-500" id="sPendingVerif">—</div>
+        <div class="text-xs font-bold text-gray-400 mt-1">⏳ Pending</div>
+      </div>
+      <div class="card bg-white rounded-2xl p-4 text-center col-span-1">
+        <div class="text-2xl font-black text-red-500"   id="sRejectedVerif">—</div>
+        <div class="text-xs font-bold text-gray-400 mt-1">❌ Rejected</div>
+      </div>
+      <div class="card bg-white rounded-2xl p-4 text-center col-span-1">
+        <div class="text-2xl font-black text-indigo-600" id="sOwners">—</div>
+        <div class="text-xs font-bold text-gray-400 mt-1">Owners</div>
+      </div>
+      <div class="card bg-white rounded-2xl p-4 text-center col-span-1">
+        <div class="text-2xl font-black text-orange-500" id="sPendingOrders">—</div>
+        <div class="text-xs font-bold text-gray-400 mt-1">Pending Orders</div>
+      </div>
+      <div class="card bg-white rounded-2xl p-4 text-center col-span-1">
+        <div class="text-2xl font-black text-gray-700" id="sTotalOrders">—</div>
+        <div class="text-xs font-bold text-gray-400 mt-1">Total Orders</div>
+      </div>
+    </div>
+
+    <!-- Section heading -->
+    <h2 class="text-base font-black text-gray-700 mb-3">Labour Verification</h2>
+
+    <!-- Tabs -->
+    <div class="flex gap-2 mb-4 flex-wrap">
+      <button class="tab-btn active px-4 py-2 rounded-xl font-bold text-xs border transition" onclick="switchTab('pending', this)">⏳ Pending</button>
+      <button class="tab-btn px-4 py-2 rounded-xl font-bold text-xs border border-gray-200 bg-white text-gray-600 transition" onclick="switchTab('verified', this)">✅ Verified</button>
+      <button class="tab-btn px-4 py-2 rounded-xl font-bold text-xs border border-gray-200 bg-white text-gray-600 transition" onclick="switchTab('rejected', this)">❌ Rejected</button>
+      <button class="tab-btn px-4 py-2 rounded-xl font-bold text-xs border border-gray-200 bg-white text-gray-600 transition" onclick="switchTab('', this)">All</button>
+    </div>
+
+    <!-- Loading / Empty -->
+    <div id="loadingEl" class="text-center py-16 text-gray-400 font-semibold text-sm">Loading...</div>
+    <div id="emptyEl"   class="hidden text-center py-16 text-gray-400 font-semibold text-sm">No records found</div>
+
+    <!-- Cards -->
+    <div id="cardsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+    <!-- Pagination -->
+    <div id="pagination" class="flex gap-2 justify-center mt-6 flex-wrap"></div>
+  </main>
+
+  <!-- Lightbox -->
+  <div id="lightbox" onclick="closeLightbox()">
+    <img id="lightboxImg" src="" alt="Document" />
+  </div>
+
+  <!-- Reject Modal -->
+  <div id="rejectModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-4">
+    <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+      <h3 class="font-black text-gray-800 text-base mb-1">Rejection Reason</h3>
+      <p class="text-xs text-gray-400 font-semibold mb-3">Labour ko ye reason dikhega</p>
+      <textarea id="rejectReason" rows="3"
+        placeholder="e.g. Document not clear, Aadhar number mismatch..."
+        class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold resize-none focus:outline-none focus:border-red-400 bg-gray-50 mb-4"></textarea>
+      <div class="flex gap-3">
+        <button onclick="closeRejectModal()" class="flex-1 border border-gray-200 rounded-xl py-2.5 font-bold text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+        <button onclick="confirmReject()" class="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-xl py-2.5 font-bold text-sm">Reject</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let token       = localStorage.getItem('adminToken');
+    let currentTab  = 'pending';
+    let currentPage = 1;
+    let rejectingId = null;   // userId of labour being rejected
+
+    if (!token) { window.location.href = '/admin'; }
+
+    const auth = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` });
+
+    // ── Startup ────────────────────────────────────────────────────────────────
+    async function init() {
+      await Promise.all([loadProfile(), loadStats()]);
+      loadVerifications(currentTab, 1);
+    }
+
+    async function loadProfile() {
+      try {
+        const res  = await fetch('/api/admin/profile', { headers: auth() });
+        if (res.status === 401) { logout(); return; }
+        const data = await res.json();
+        document.getElementById('adminEmail').textContent = data?.data?.email || 'Admin';
+      } catch {}
+    }
+
+    async function loadStats() {
+      try {
+        const res = await fetch('/api/admin/dashboard/stats', { headers: auth() });
+        if (res.status === 401) { logout(); return; }
+        const { data } = await res.json();
+        if (!data) return;
+        document.getElementById('sLabours').textContent        = data.labours          ?? '—';
+        document.getElementById('sVerifiedLabours').textContent = data.verifiedLabours  ?? '—';
+        document.getElementById('sPendingVerif').textContent    = data.pendingVerifications  ?? '—';
+        document.getElementById('sRejectedVerif').textContent   = data.rejectedVerifications ?? '—';
+        document.getElementById('sOwners').textContent          = data.owners           ?? '—';
+        document.getElementById('sPendingOrders').textContent   = data.pendingOrders    ?? '—';
+        document.getElementById('sTotalOrders').textContent     = data.totalOrders      ?? '—';
+      } catch {}
+    }
+
+    // ── Verifications list ──────────────────────────────────────────────────────
+    async function loadVerifications(status, page) {
+      document.getElementById('loadingEl').classList.remove('hidden');
+      document.getElementById('emptyEl').classList.add('hidden');
+      document.getElementById('cardsGrid').innerHTML = '';
+      document.getElementById('pagination').innerHTML = '';
+
+      const qs = new URLSearchParams({ page, limit: 12 });
+      if (status) qs.set('verificationStatus', status);
+
+      const res = await fetch(`/api/admin/labour-verifications?${qs}`, { headers: auth() });
+      if (res.status === 401) { logout(); return; }
+      const data = await res.json();
+      const list = data?.data?.verifications || [];
+
+      document.getElementById('loadingEl').classList.add('hidden');
+
+      if (list.length === 0) {
+        document.getElementById('emptyEl').classList.remove('hidden');
+        return;
+      }
+
+      const grid = document.getElementById('cardsGrid');
+      list.forEach(v => grid.insertAdjacentHTML('beforeend', buildCard(v)));
+      buildPagination(data?.data?.page, data?.data?.totalPages);
+    }
+
+    // ── Card builder ───────────────────────────────────────────────────────────
+    function buildCard(v) {
+      const status     = v.verificationStatus || 'pending';
+      const isVerified = status === 'verified';
+      const name       = v.user?.name   || 'Unknown Labour';
+      const phone      = v.user?.phone  || '—';
+      const code       = v.labourCode   || '—';
+      const aadhar     = v.aadharNumber || '—';
+      const submittedAt = v.verificationSubmittedAt
+        ? new Date(v.verificationSubmittedAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
+        : '—';
+      const verifiedAt = v.verifiedAt
+        ? new Date(v.verifiedAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
+        : null;
+
+      const statusLabel = { pending: '⏳ Pending', verified: '✅ Verified', rejected: '❌ Rejected' }[status] || status;
+
+      const docSection = v.documentUrl
+        ? `<img src="${v.documentUrl}" class="doc-img mb-2" onclick="openLightbox('${v.documentUrl}')" title="Click to enlarge" />`
+        : `<div class="w-full h-24 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400 text-xs font-bold mb-2">No Document</div>`;
+
+      const actionBtns = status === 'pending'
+        ? `<div class="flex gap-2 mt-3">
+             <button onclick="approveLabour('${v.userId}')"
+               class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold text-xs py-2.5 rounded-xl transition">✅ Approve</button>
+             <button onclick="openRejectModal('${v.userId}')"
+               class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold text-xs py-2.5 rounded-xl transition">❌ Reject</button>
+           </div>`
+        : status === 'rejected' && v.rejectionReason
+          ? `<div class="mt-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2 text-xs text-red-600 font-semibold">Reason: ${v.rejectionReason}</div>`
+          : '';
+
+      return `
+        <div class="card bg-white rounded-2xl p-4" id="card-${v.userId}">
+          <div class="flex items-start justify-between mb-2">
+            <div class="flex-1 min-w-0 mr-2">
+              <p class="font-black text-gray-800 text-sm truncate">${name}</p>
+              <p class="text-gray-400 text-xs font-semibold">${phone}</p>
+              <p class="text-gray-300 text-xs font-semibold">ID: ${code}</p>
+            </div>
+            <div class="flex flex-col items-end gap-1 shrink-0">
+              <span class="text-xs font-bold px-2.5 py-1 rounded-full badge-${status}">${statusLabel}</span>
+              <span class="text-xs font-bold px-2.5 py-1 rounded-full badge-${isVerified}">${isVerified ? '🔵 isVerified: true' : '⚪ isVerified: false'}</span>
+            </div>
+          </div>
+          <div class="text-xs text-gray-500 font-semibold mb-2">
+            🪪 Aadhar: <span class="text-gray-700">${aadhar}</span>
+          </div>
+          ${docSection}
+          <p class="text-xs text-gray-400 font-semibold">📅 Submitted: ${submittedAt}</p>
+          ${verifiedAt ? `<p class="text-xs text-green-500 font-semibold">✅ Verified: ${verifiedAt}</p>` : ''}
+          ${actionBtns}
+        </div>`;
+    }
+
+    // ── Pagination ─────────────────────────────────────────────────────────────
+    function buildPagination(page, totalPages) {
+      if (!totalPages || totalPages <= 1) return;
+      const el = document.getElementById('pagination');
+      const start = Math.max(1, page - 2);
+      const end   = Math.min(totalPages, page + 2);
+      if (start > 1) el.insertAdjacentHTML('beforeend', pageBtn(1, page));
+      if (start > 2) el.insertAdjacentHTML('beforeend', `<span class="text-gray-400 font-bold px-1">…</span>`);
+      for (let i = start; i <= end; i++) el.insertAdjacentHTML('beforeend', pageBtn(i, page));
+      if (end < totalPages - 1) el.insertAdjacentHTML('beforeend', `<span class="text-gray-400 font-bold px-1">…</span>`);
+      if (end < totalPages) el.insertAdjacentHTML('beforeend', pageBtn(totalPages, page));
+    }
+
+    function pageBtn(i, current) {
+      const active = i === current ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300';
+      return `<button onclick="goPage(${i})" class="w-9 h-9 rounded-xl font-bold text-sm border ${active} transition">${i}</button>`;
+    }
+
+    function goPage(p) { currentPage = p; loadVerifications(currentTab, currentPage); }
+
+    function switchTab(status, btn) {
+      currentTab  = status;
+      currentPage = 1;
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.remove('active');
+        b.classList.add('bg-white', 'text-gray-600', 'border-gray-200');
+        b.classList.remove('border-blue-600');
+      });
+      btn.classList.add('active');
+      btn.classList.remove('bg-white', 'text-gray-600');
+      loadVerifications(status, 1);
+    }
+
+    // ── Actions ────────────────────────────────────────────────────────────────
+    async function approveLabour(userId) {
+      if (!confirm('Approve this labour? isVerified will be set to TRUE.')) return;
+      const res  = await fetch(`/api/admin/labour-verifications/${userId}/approve`, { method: 'PUT', headers: auth() });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('✅ ' + (data.message || 'Approved'));
+        await Promise.all([loadStats(), loadVerifications(currentTab, currentPage)]);
+      } else {
+        showToast('Error: ' + (data.message || 'Failed'), true);
+      }
+    }
+
+    function openRejectModal(userId) {
+      rejectingId = userId;
+      document.getElementById('rejectReason').value = '';
+      document.getElementById('rejectModal').classList.remove('hidden');
+    }
+
+    function closeRejectModal() {
+      rejectingId = null;
+      document.getElementById('rejectModal').classList.add('hidden');
+    }
+
+    async function confirmReject() {
+      const reason = document.getElementById('rejectReason').value.trim();
+      if (!reason) { alert('Rejection reason is required'); return; }
+      closeRejectModal();
+      const res  = await fetch(`/api/admin/labour-verifications/${rejectingId}/reject`, {
+        method:  'PUT',
+        headers: auth(),
+        body:    JSON.stringify({ rejectionReason: reason }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('❌ ' + (data.message || 'Rejected'));
+        await Promise.all([loadStats(), loadVerifications(currentTab, currentPage)]);
+      } else {
+        showToast('Error: ' + (data.message || 'Failed'), true);
+      }
+    }
+
+    // ── Lightbox ───────────────────────────────────────────────────────────────
+    function openLightbox(url) {
+      document.getElementById('lightboxImg').src = url;
+      document.getElementById('lightbox').classList.add('open');
+    }
+
+    function closeLightbox() {
+      document.getElementById('lightbox').classList.remove('open');
+    }
+
+    // ── Toast ──────────────────────────────────────────────────────────────────
+    function showToast(msg, isError = false) {
+      const t = document.createElement('div');
+      t.className = `fixed bottom-6 right-6 z-50 px-5 py-3 rounded-2xl text-white font-bold text-sm shadow-xl transition-all
+        ${isError ? 'bg-red-500' : 'bg-green-600'}`;
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 3500);
+    }
+
+    // ── Auth ───────────────────────────────────────────────────────────────────
+    function logout() {
+      localStorage.removeItem('adminToken');
+      window.location.href = '/admin';
+    }
+
+    init();
+  </script>
+</body>
+</html>
