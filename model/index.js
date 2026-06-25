@@ -7,8 +7,8 @@ const commonOptions = {
   dialect: config.DIALECT,
   logging: false,
   pool: {
-    max: 20,
-    min: 5,
+    max: 10,
+    min: 2,
     acquire: 30000,
     idle: 10000,
   },

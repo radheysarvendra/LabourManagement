@@ -15,27 +15,43 @@ const forbidden= (msg)                   => ({ statusCode: 403, body: { success:
 
 // ── submit verification request ───────────────────────────────────────────────
 
-const submitVerificationService = async ({ userId, aadharNumber, documentUrl, cloudinaryPublicId }) => {
+const submitVerificationService = async ({ userId, aadharNumber, documentUrl, cloudinaryPublicId, photoUrl, photoCloudinaryPublicId }) => {
   if (!aadharNumber && !documentUrl) {
-    return bad("Provide at least one: aadharNumber or documentUrl");
+    return bad("Aadhaar number and document are required");
+  }
+
+  // Aadhaar must be exactly 12 digits
+  const cleanAadhar = (aadharNumber || "").replace(/[\s\-]/g, "");
+  if (cleanAadhar && !/^\d{12}$/.test(cleanAadhar)) {
+    return bad("Aadhaar number must be exactly 12 digits (numbers only)");
   }
 
   const profile = await LabourProfile.findOne({ where: { userId } });
   if (!profile) return notFound("Labour profile not found. Complete your profile first.");
 
+  // Locked after admin approval — cannot re-submit
+  if (profile.isLocked) {
+    return forbidden("Your verification is locked. Documents cannot be changed after approval. Contact admin to unlock.");
+  }
+
   if (profile.verificationStatus === "verified") {
     return bad("Your profile is already verified");
   }
 
-  // If re-submitting, delete old temp document from Cloudinary
-  if (profile.cloudinaryPublicId && profile.verificationStatus !== "verified") {
+  // Delete old temp document from Cloudinary when re-submitting
+  if (profile.cloudinaryPublicId) {
     await cloudinary.uploader.destroy(profile.cloudinaryPublicId).catch(() => {});
+  }
+  if (profile.photoCloudinaryPublicId && photoCloudinaryPublicId && photoCloudinaryPublicId !== profile.photoCloudinaryPublicId) {
+    await cloudinary.uploader.destroy(profile.photoCloudinaryPublicId).catch(() => {});
   }
 
   await profile.update({
-    aadharNumber:            aadharNumber      || profile.aadharNumber,
-    documentUrl:             documentUrl       || profile.documentUrl,
-    cloudinaryPublicId:      cloudinaryPublicId || profile.cloudinaryPublicId,
+    aadharNumber:            cleanAadhar                         || profile.aadharNumber,
+    documentUrl:             documentUrl                         || profile.documentUrl,
+    cloudinaryPublicId:      cloudinaryPublicId                  || profile.cloudinaryPublicId,
+    photoUrl:                photoUrl                            || profile.photoUrl,
+    photoCloudinaryPublicId: photoCloudinaryPublicId             || profile.photoCloudinaryPublicId,
     verificationStatus:      "pending",
     rejectionReason:         null,
     verificationSubmittedAt: new Date(),
@@ -58,7 +74,7 @@ const getMyVerificationStatusService = async (userId) => {
     attributes: [
       "userId", "labourCode", "verificationStatus",
       "verificationSubmittedAt", "verifiedAt", "rejectionReason",
-      "aadharNumber", "documentUrl",
+      "aadharNumber", "documentUrl", "photoUrl", "isLocked",
     ],
   });
 
@@ -98,7 +114,7 @@ const getVerificationsService = async ({ verificationStatus, userId, page = 1, l
       attributes: [
         "userId", "labourCode", "verificationStatus",
         "verificationSubmittedAt", "verifiedAt", "rejectionReason",
-        "aadharNumber", "documentUrl",
+        "aadharNumber", "documentUrl", "photoUrl", "isLocked",
       ],
       order: [["verificationSubmittedAt", "DESC"]],
       limit:  Number(limit),
@@ -144,6 +160,7 @@ const approveVerificationService = async (labourUserId, adminId) => {
     rejectionReason:    null,
     documentUrl:        newDocumentUrl,
     cloudinaryPublicId: newPublicId,
+    isLocked:           true,
   });
 
   // Sync isVerified flag on the labours table for fast filtering
@@ -206,7 +223,11 @@ const revokeVerificationService = async (labourUserId) => {
     verifiedByAdminId:  null,
     verifiedAt:         null,
     rejectionReason:    null,
+    isLocked:           false,
   });
+
+  // Sync isVerified flag — revoked labour is no longer verified
+  await Labour.update({ isVerified: false }, { where: { userId: labourUserId } });
 
   return ok(profile, "Verification revoked. Profile set back to pending.");
 };

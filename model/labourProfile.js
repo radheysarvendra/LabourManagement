@@ -55,6 +55,21 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    // Profile photo uploaded during verification
+    photoUrl: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    photoCloudinaryPublicId: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    // Locked = true after admin approves. Prevents re-upload until admin revokes.
+    isLocked: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
   }, {
     tableName: "labourProfiles",
     timestamps: true,
