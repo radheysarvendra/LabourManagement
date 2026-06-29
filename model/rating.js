@@ -10,6 +10,16 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    assignmentId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null,
+    },
+    workAssignmentId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null,
+    },
     ratedByUserId: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -18,13 +28,20 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
-    raterType: {
-      type: DataTypes.ENUM("owner", "labour", "contractor"),
+    ratedRoleCode: {
+      type: DataTypes.STRING(20),
       allowNull: false,
+      validate: { isIn: [["LABOUR", "CONTRACTOR", "OWNER"]] },
+    },
+    raterType: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      defaultValue: null,
     },
     rateeType: {
-      type: DataTypes.ENUM("owner", "labour", "contractor"),
-      allowNull: false,
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      defaultValue: null,
     },
     stars: {
       type: DataTypes.INTEGER,
@@ -41,9 +58,10 @@ module.exports = (sequelize, DataTypes) => {
     timestamps: true,
     indexes: [
       { fields: ["orderId"] },
+      { fields: ["assignmentId"] },
       { fields: ["ratedByUserId"] },
       { fields: ["ratedUserId"] },
-      { unique: true, fields: ["orderId", "ratedByUserId", "rateeType"], name: "uq_rating_per_ratee_per_order" },
+      { unique: true, fields: ["orderId", "assignmentId", "ratedByUserId", "ratedUserId"], name: "uq_rating_per_provider_assignment" },
     ],
   });
 

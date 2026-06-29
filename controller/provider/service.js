@@ -149,7 +149,7 @@ const mapNewContractor = (profile) => {
 };
 
 const searchNewContractors = async ({
-  categoryId, skillId,
+  categoryId, skillId, search,
   stateId, districtId, pincodeId, postOfficeId,
   state, district, pincode, postOffice,
   page = 1, limit = 20,
@@ -158,12 +158,24 @@ const searchNewContractors = async ({
   const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
   const offset = (pageNumber - 1) * pageLimit;
 
-  const profileWhere = { isAvailable: true };
-  const userWhere = buildUserLocationWhere({
+  const profileWhere = {};
+  const locationWhere = buildUserLocationWhere({
     stateId, districtId, pincodeId, postOfficeId,
     state, district, pincode, postOffice,
   });
-  const hasLocationFilter = Object.keys(userWhere).length > 0;
+  const hasLocationFilter = Object.keys(locationWhere).length > 0;
+
+  // Cross-table search: name/phone on user, companyName on profile
+  if (search) {
+    const q = `%${String(search).trim()}%`;
+    profileWhere[Op.or] = [
+      { '$user.name$':  { [Op.iLike]: q } },
+      { '$user.phone$': { [Op.iLike]: q } },
+      { companyName:    { [Op.iLike]: q } },
+    ];
+  }
+
+  const userWhere = hasLocationFilter ? locationWhere : undefined;
 
   const skillInclude = {
     model: db.contractorSkill,
@@ -183,12 +195,13 @@ const searchNewContractors = async ({
 
   const result = await db.contractorProfile.findAndCountAll({
     where: profileWhere,
+    subQuery: false,
     include: [
       {
         model: User,
         as: "user",
-        required: hasLocationFilter,
-        where: hasLocationFilter ? userWhere : undefined,
+        required: !!(hasLocationFilter || search),
+        where: userWhere,
         attributes: ["id", "name", "phone", "age", "gender", "profileImage", "city", "district", "state", "stateId", "districtId", "pincode", "pincodeId", "postOffice", "postOfficeId", "area"],
       },
       skillInclude,
@@ -204,7 +217,7 @@ const searchNewContractors = async ({
 };
 
 const searchContractors = async ({
-  categoryId, skillId,
+  categoryId, skillId, search,
   stateId, districtId, pincodeId, postOfficeId,
   state, district, pincode, postOffice,
   page = 1, limit = 20,
@@ -217,7 +230,7 @@ const searchContractors = async ({
   let newFlowResult = null;
   try {
     newFlowResult = await searchNewContractors({
-      categoryId, skillId,
+      categoryId, skillId, search,
       stateId, districtId, pincodeId, postOfficeId,
       state, district, pincode, postOffice,
       page, limit,
@@ -245,6 +258,15 @@ const searchContractors = async ({
   if (categoryId) ownerWhere.categoryId = Number(categoryId);
   if (skillId) ownerWhere.skillId = Number(skillId);
 
+  const userWhere = { isActive: true };
+  if (search) {
+    const q = `%${String(search).trim()}%`;
+    userWhere[Op.or] = [
+      { name:  { [Op.iLike]: q } },
+      { phone: { [Op.iLike]: q } },
+    ];
+  }
+
   const result = await Owner.findAndCountAll({
     where: ownerWhere,
     include: [
@@ -252,7 +274,7 @@ const searchContractors = async ({
         model: User,
         as: "user",
         required: true,
-        where: { isActive: true },
+        where: userWhere,
         attributes: ["id", "name", "phone", "age", "gender", "profileImage", "city", "district", "state", "stateId", "districtId", "pincode", "pincodeId", "postOffice", "postOfficeId", "area", "isActive", "status"],
       },
       { model: Skill, as: "skillDetail", required: false },

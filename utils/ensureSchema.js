@@ -544,6 +544,23 @@ const ensureSchema = async (db) => {
     )
   `);
 
+  await ensureTable(db.sequelize, "providerRatingSummaries", `
+    CREATE TABLE IF NOT EXISTS "providerRatingSummaries" (
+      "userId" INTEGER NOT NULL REFERENCES "users"(id) ON DELETE CASCADE,
+      "roleCode" VARCHAR(20) NOT NULL,
+      "averageRating" DECIMAL(3, 2) NOT NULL DEFAULT 0,
+      "totalRatings" INTEGER NOT NULL DEFAULT 0,
+      "fiveStarCount" INTEGER NOT NULL DEFAULT 0,
+      "fourStarCount" INTEGER NOT NULL DEFAULT 0,
+      "threeStarCount" INTEGER NOT NULL DEFAULT 0,
+      "twoStarCount" INTEGER NOT NULL DEFAULT 0,
+      "oneStarCount" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+      PRIMARY KEY ("userId", "roleCode")
+    )
+  `);
+
   // Enforce normalized identity and assignment integrity at database level.
   await db.sequelize.query(`
     DO $$ BEGIN
@@ -829,9 +846,27 @@ const ensureSchema = async (db) => {
     await ensureColumn(queryInterface, "labourProfiles", col, def);
   }
 
-  // ratings table index — table may not exist yet on first deploy (Sequelize sync creates it)
+  // ratings table columns/indexes — table may not exist yet on first deploy (Sequelize sync creates it)
   try {
-    await ensureIndex(queryInterface, "ratings", ["orderId", "ratedByUserId", "rateeType"], "uq_rating_per_ratee_per_order", { unique: true });
+    await ensureColumn(queryInterface, "ratings", "assignmentId", { type: db.Sequelize.INTEGER, allowNull: true });
+    await ensureColumn(queryInterface, "ratings", "workAssignmentId", { type: db.Sequelize.INTEGER, allowNull: true });
+    await ensureColumn(queryInterface, "ratings", "ratedRoleCode", { type: db.Sequelize.STRING(20), allowNull: true });
+    await ensureIndex(queryInterface, "ratings", ["orderId"], "idx_ratings_order_id");
+    await ensureIndex(queryInterface, "ratings", ["assignmentId"], "idx_ratings_assignment_id");
+    await ensureIndex(queryInterface, "ratings", ["ratedUserId"], "idx_ratings_rated_user_id");
+    await db.sequelize.query(`DROP INDEX IF EXISTS "uq_rating_per_ratee_per_order"`);
+    await db.sequelize.query(`ALTER TABLE "ratings" DROP CONSTRAINT IF EXISTS "uq_rating_per_ratee_per_order"`);
+    await ensureIndex(queryInterface, "ratings", ["orderId", "assignmentId", "ratedByUserId", "ratedUserId"], "uq_rating_per_provider_assignment", { unique: true });
+    await db.sequelize.query(`
+      UPDATE "ratings"
+      SET "ratedRoleCode" = CASE
+        WHEN UPPER(COALESCE("rateeType"::text, '')) = 'CONTRACTOR' THEN 'CONTRACTOR'
+        WHEN UPPER(COALESCE("rateeType"::text, '')) = 'OWNER' THEN 'OWNER'
+        ELSE 'LABOUR'
+      END
+      WHERE "ratedRoleCode" IS NULL
+    `);
+    await db.sequelize.query(`ALTER TABLE "ratings" ALTER COLUMN "ratedRoleCode" SET NOT NULL`);
   } catch (e) { /* table not yet created — sync will handle it */ }
 
   // platformFee column on workPayments (labour platform fee per day)
@@ -849,6 +884,9 @@ const ensureSchema = async (db) => {
   await ensureIndex(queryInterface, "contractorProfiles", ["isAvailable"], "idx_contractor_profiles_available");
   await ensureIndex(queryInterface, "contractorSkills", ["skillId"], "idx_contractor_skills_skill_id");
   await ensureIndex(queryInterface, "contractorCategories", ["categoryId"], "idx_contractor_categories_category_id");
+  await ensureIndex(queryInterface, "providerRatingSummaries", ["roleCode"], "idx_provider_rating_role");
+  await ensureIndex(queryInterface, "providerRatingSummaries", ["averageRating"], "idx_provider_rating_average");
+  await ensureIndex(queryInterface, "providerRatingSummaries", ["totalRatings"], "idx_provider_rating_total");
 };
 
 module.exports = {

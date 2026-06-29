@@ -21,6 +21,18 @@ const getRatingsByOrder = async (req, res) => {
   }
 };
 
+const updateRating = async (req, res) => {
+  try {
+    const result = await ratingService.updateRatingService(req.params.id, {
+      ...req.body,
+      _userId: req.user?.userId || req.user?.id,
+    });
+    return res.status(result.statusCode).send(result.body);
+  } catch (err) {
+    return res.status(500).send({ success: false, message: err.message });
+  }
+};
+
 const getRatingsByUser = async (req, res) => {
   try {
     const result = await ratingService.getRatingsByUserService(
@@ -64,6 +76,7 @@ const deleteRating = async (req, res) => {
 
 module.exports = {
   submitRating,
+  updateRating,
   getRatingsByOrder,
   getRatingsByUser,
   getMyGivenRatings,
