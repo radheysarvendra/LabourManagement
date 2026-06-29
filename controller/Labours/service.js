@@ -11,6 +11,7 @@ const State = db.state;
 const District = db.district;
 const Pincode = db.pincode;
 const PostOffice = db.postOffice;
+const ProviderRatingSummary = db.providerRatingSummary;
 
 const USER_ATTRIBUTES = [
   "id", "name", "phone", "age", "gender", "profileImage",
@@ -141,6 +142,12 @@ const labourInclude = [
     as: "user",
     required: false,
     attributes: USER_ATTRIBUTES,
+    include: [{
+      model: ProviderRatingSummary,
+      as: "ratingSummaries",
+      required: false,
+      where: { roleCode: "LABOUR" },
+    }],
   },
   {
     model: LabourSkill,
@@ -149,27 +156,34 @@ const labourInclude = [
   },
 ];
 
-const getLabourSearchInclude = (requestedSkill) => [
-  {
-    model: LabourSkill,
-    as: "labourSkills",
-    required: Boolean(requestedSkill),
-    include: [
-      {
-        model: Skill,
-        as: "skill",
-        required: Boolean(requestedSkill),
-        ...(requestedSkill ? { where: { skillName: { [Op.iLike]: requestedSkill } } } : {}),
-      },
-    ],
-  },
-];
+const getLabourSearchInclude = (requestedSkill, requestedCategory) => {
+  const skillWhere = {};
+  if (requestedSkill)    skillWhere.skillName = { [Op.iLike]: `%${requestedSkill}%` };
+  if (requestedCategory) skillWhere.category  = { [Op.iLike]: `%${requestedCategory}%` };
+  const hasSkillFilter = requestedSkill || requestedCategory;
+  return [
+    {
+      model: LabourSkill,
+      as: "labourSkills",
+      required: Boolean(hasSkillFilter),
+      include: [
+        {
+          model: Skill,
+          as: "skill",
+          required: Boolean(hasSkillFilter),
+          ...(hasSkillFilter ? { where: skillWhere } : {}),
+        },
+      ],
+    },
+  ];
+};
 
 // Flatten user personal/location fields onto the labour JSON for backward compat
 const mapLabourWithSkills = (labour) => {
   const json = labour.toJSON ? labour.toJSON() : labour;
   const user = json.user || {};
   const labourSkills = Array.isArray(json.labourSkills) ? json.labourSkills : [];
+  const ratingSummary = Array.isArray(user.ratingSummaries) ? user.ratingSummaries[0] : null;
 
   return {
     id: json.id,
@@ -186,6 +200,25 @@ const mapLabourWithSkills = (labour) => {
     updatedById: json.updatedById,
     createdAt: json.createdAt,
     updatedAt: json.updatedAt,
+    averageRating: Number(ratingSummary?.averageRating || 0),
+    totalRatings: Number(ratingSummary?.totalRatings || 0),
+    ratingSummary: ratingSummary ? {
+      averageRating: Number(ratingSummary.averageRating || 0),
+      totalRatings: Number(ratingSummary.totalRatings || 0),
+      fiveStarCount: Number(ratingSummary.fiveStarCount || 0),
+      fourStarCount: Number(ratingSummary.fourStarCount || 0),
+      threeStarCount: Number(ratingSummary.threeStarCount || 0),
+      twoStarCount: Number(ratingSummary.twoStarCount || 0),
+      oneStarCount: Number(ratingSummary.oneStarCount || 0),
+    } : {
+      averageRating: 0,
+      totalRatings: 0,
+      fiveStarCount: 0,
+      fourStarCount: 0,
+      threeStarCount: 0,
+      twoStarCount: 0,
+      oneStarCount: 0,
+    },
     // Personal data from users table
     age: user.age ?? null,
     gender: user.gender ?? null,
@@ -505,7 +538,7 @@ const resolveSearchLocation = async ({ stateId, districtId, pincodeId, postOffic
 
 const searchLaboursService = async ({
   stateId, districtId, pincodeId, postOfficeId, pincode, district,
-  skill, isVerified, verificationStatus, phone,
+  skill, category, search, isAvailable, isVerified, verificationStatus, phone,
   page = 1, limit = 4, showAll = false,
 }) => {
   const pageNumber = Math.max(Number(page) || 1, 1);
@@ -515,8 +548,9 @@ const searchLaboursService = async ({
 
   const location = await resolveSearchLocation({ stateId, districtId, pincodeId, postOfficeId, pincode, district });
 
-  const labourWhere = showAll ? {} : { isAvailable: true };
-  const baseLabourWhere = showAll ? {} : { isAvailable: true };
+  const availFilter = (isAvailable === "true" || isAvailable === true) ? { isAvailable: true } : {};
+  const labourWhere = showAll ? { ...availFilter } : { isAvailable: true, ...availFilter };
+  const baseLabourWhere = { ...labourWhere };
 
   const verificationValue = String(verificationStatus || isVerified || "").toLowerCase().trim();
   if (["true", "verified", "1"].includes(verificationValue)) {
@@ -533,6 +567,13 @@ const searchLaboursService = async ({
   const userLocationWhere = buildUserLocationWhere(location, { stateId, districtId, pincodeId, postOfficeId });
   const phoneQuery = String(phone || "").trim().replace(/\D/g, "");
   if (phoneQuery) userLocationWhere.phone = { [Op.like]: `%${phoneQuery}%` };
+  const searchQuery = String(search || "").trim();
+  if (searchQuery) {
+    userLocationWhere[Op.or] = [
+      { name:  { [Op.iLike]: `%${searchQuery}%` } },
+      { phone: { [Op.iLike]: `%${searchQuery}%` } },
+    ];
+  }
   const hasUserFilter = Object.keys(userLocationWhere).length > 0;
 
   const userInclude = {
@@ -540,13 +581,20 @@ const searchLaboursService = async ({
     as: "user",
     required: hasUserFilter,
     attributes: USER_ATTRIBUTES,
+    include: [{
+      model: ProviderRatingSummary,
+      as: "ratingSummaries",
+      required: false,
+      where: { roleCode: "LABOUR" },
+    }],
     ...(hasUserFilter ? { where: userLocationWhere } : {}),
   };
 
-  const requestedSkill = String(skill || "").trim();
+  const requestedSkill    = String(skill || "").trim();
+  const requestedCategory = String(category || "").trim();
   const searchResult = await Labour.findAndCountAll({
     where: labourWhere,
-    include: [userInclude, ...getLabourSearchInclude(requestedSkill)],
+    include: [userInclude, ...getLabourSearchInclude(requestedSkill, requestedCategory)],
     distinct: true,
     order: [["createdAt", "DESC"]],
   });
@@ -565,11 +613,15 @@ const searchLaboursService = async ({
           Number(hasSkillMatch) * 100 +
           Number(samePostOffice) * 30 +
           Number(samePincode) * 20 +
-          Number(sameDistrict) * 10,
+          Number(sameDistrict) * 10 +
+          Number(json.averageRating || 0) * 4 +
+          Math.min(Number(json.totalRatings || 0), 20),
       };
     })
     .sort((a, b) => {
       if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
+      if (b.averageRating !== a.averageRating) return b.averageRating - a.averageRating;
+      if (b.totalRatings !== a.totalRatings) return b.totalRatings - a.totalRatings;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || b.id - a.id;
     });
 

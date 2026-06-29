@@ -45,12 +45,49 @@ const mapCategory = (category) => {
   };
 };
 
+const syncSkillCategories = async () => {
+  // Find all unique category strings on the skills table
+  const rows = await db.skill.findAll({
+    attributes: ["category"],
+    where: { category: { [Op.ne]: null }, isActive: true },
+    group: ["category"],
+    raw: true,
+  });
+
+  for (const row of rows) {
+    const raw = String(row.category || "").trim();
+    if (!raw) continue;
+    const name = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+
+    // Ensure category row exists
+    const [cat] = await db.category.findOrCreate({
+      where: { name },
+      defaults: { name, isActive: true },
+    });
+
+    // Ensure every skill with this category has a categorySkill mapping
+    const skills = await db.skill.findAll({
+      where: { category: { [Op.iLike]: raw }, isActive: true },
+    });
+
+    for (const skill of skills) {
+      await db.categorySkill.findOrCreate({
+        where: { categoryId: cat.id, skillId: skill.id },
+        defaults: { categoryId: cat.id, skillId: skill.id, isActive: true },
+      });
+    }
+  }
+};
+
 const getCategoriesService = async ({ activeOnly } = {}) => {
+  // Sync skill-derived categories into the categories table first
+  await syncSkillCategories();
+
   const where = activeOnly === "false" ? {} : { isActive: true };
   const data = await db.category.findAll({
     where,
     include: categoryInclude,
-    order: [["id", "ASC"]],
+    order: [["name", "ASC"]],
   });
 
   return {

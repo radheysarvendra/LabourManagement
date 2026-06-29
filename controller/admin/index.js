@@ -219,10 +219,24 @@ const createAdmin = async (req, res) => {
 
 const getAdmins = async (req, res) => {
   try {
+    const { Op } = require("sequelize");
     const pageNumber = Math.max(Number(req.query.page) || 1, 1);
     const pageLimit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
     const offset = (pageNumber - 1) * pageLimit;
+    const where = {};
+    const { search, status, roleId } = req.query;
+    if (search) {
+      const q = `%${String(search).trim()}%`;
+      where[Op.or] = [
+        { name:  { [Op.iLike]: q } },
+        { email: { [Op.iLike]: q } },
+        { phone: { [Op.iLike]: q } },
+      ];
+    }
+    if (status)  where.status = status;
+    if (roleId)  where.roleId = Number(roleId);
     const result = await Admin.findAndCountAll({
+      where,
       attributes: { exclude: ["passwordHash"] },
       include: [{ model: Role, as: "role", required: false }],
       order: [["createdAt", "DESC"]],

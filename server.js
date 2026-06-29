@@ -38,14 +38,12 @@ const runStartupTasks = async () => {
 const startServer = async () => {
   await connectDB();
   await ensureDefaultAdmin();
+  await runStartupTasks();
 
- server.listen(port, "0.0.0.0", () => {
-  console.log(`Server running on port ${port}`);
-});
-
-runStartupTasks()
-  .then(() => console.log("Startup tasks completed"))
-  .catch((error) => console.error("Startup seed warning:", error.message));
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Server running on port ${port}`);
+    console.log("Startup tasks completed");
+  });
 };
 
 server.on("error", (error) => {

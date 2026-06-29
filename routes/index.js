@@ -223,6 +223,7 @@ router.get("/api/platform-fees/labour-tiers", (req, res) => {
 
 // ── Rating routes ─────────────────────────────────────────────────────────────
 router.post("/api/ratings", verifyToken, ratingController.submitRating);
+router.put("/api/ratings/:id", verifyToken, ratingController.updateRating);
 router.get("/api/ratings/my", verifyToken, ratingController.getMyGivenRatings);
 router.get("/api/ratings/order/:orderId", verifyToken, ratingController.getRatingsByOrder);
 router.get("/api/ratings/user/:userId", verifyToken, ratingController.getRatingsByUser);
