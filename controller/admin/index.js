@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const db = require("../../model/index.js");
 const { config } = require("../../config/db.config");
+const { fn, col, Op } = require("sequelize");
 
 const Admin = db.admin;
 const Role = db.role;
@@ -10,9 +11,6 @@ const Labour = db.labour;
 const Owner = db.owner;
 const Order = db.order;
 const Booking = db.booking;
-const {
-  Op,
-} = require("sequelize");
 const {
   ADMIN_ACTIONS,
   ADMIN_MODULES,
@@ -354,6 +352,52 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
+const getStaffStrength = async (req, res) => {
+  try {
+    const { state, city } = req.query;
+    const where = {};
+
+    if (state) {
+      where.state = { [Op.iLike]: `%${String(state).trim()}%` };
+    }
+
+    const rows = await db.user.findAll({
+      where,
+      attributes: [
+        "state",
+        "district",
+        "city",
+        "village",
+        [fn("COUNT", col("id")), "count"],
+      ],
+      group: ["state", "district", "city", "village"],
+      order: [["state", "ASC"]],
+      raw: true,
+    });
+
+    const normalizedRows = rows
+      .map((row) => {
+        const derivedCity = row.city || row.district || row.village || "";
+        return {
+          state: row.state || "",
+          city: derivedCity,
+          count: Number(row.count || 0),
+        };
+      })
+      .filter((row) => {
+        if (!city) return true;
+        return row.city.toLowerCase().includes(String(city).trim().toLowerCase());
+      });
+
+    return res.status(200).json({
+      success: true,
+      data: { rows: normalizedRows },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 const getAllUsers = async (req, res) => {
   try {
     const page      = Math.max(Number(req.query.page)  || 1, 1);
@@ -398,6 +442,98 @@ const getAllUsers = async (req, res) => {
   }
 };
 
+const getRolePermissions = async (req, res) => {
+  try {
+    const roleId = Number(req.params.roleId);
+    if (!roleId) {
+      return res.status(400).json({ success: false, message: "Role ID is required" });
+    }
+
+    const role = await Role.findOne({ where: { id: roleId } });
+    if (!role) {
+      return res.status(404).json({ success: false, message: "Role not found" });
+    }
+
+    const permissions = await AdminPermission.findAll({
+      where: { roleId },
+      order: [["moduleName", "ASC"]],
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        roleId,
+        permissions: permissions.map((permission) => ({
+          module: permission.moduleName,
+          canView: permission.canView,
+          canEdit: permission.canUpdate,
+          canCreate: permission.canCreate,
+          canDelete: permission.canDelete,
+        })),
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const updateRolePermissions = async (req, res) => {
+  try {
+    const roleId = Number(req.params.roleId);
+    const permissions = Array.isArray(req.body.permissions) ? req.body.permissions : [];
+
+    if (!roleId) {
+      return res.status(400).json({ success: false, message: "Role ID is required" });
+    }
+
+    const role = await Role.findOne({ where: { id: roleId } });
+    if (!role) {
+      return res.status(404).json({ success: false, message: "Role not found" });
+    }
+
+    if (permissions.length === 0) {
+      return res.status(400).json({ success: false, message: "Permissions array is required" });
+    }
+
+    const normalizedRows = permissions
+      .map((permission) => ({
+        roleId,
+        moduleName: String(permission.module || permission.moduleName || "").trim(),
+        canView: !!permission.canView,
+        canCreate: !!permission.canCreate,
+        canUpdate: !!(permission.canUpdate ?? permission.canEdit),
+        canDelete: !!permission.canDelete,
+        canApprove: !!permission.canApprove,
+      }))
+      .filter((permission) => permission.moduleName);
+
+    if (normalizedRows.length === 0) {
+      return res.status(400).json({ success: false, message: "At least one valid permission is required" });
+    }
+
+    const seenModules = new Set();
+    for (const permission of normalizedRows) {
+      if (seenModules.has(permission.moduleName)) {
+        return res.status(400).json({ success: false, message: `Duplicate module permission: ${permission.moduleName}` });
+      }
+      seenModules.add(permission.moduleName);
+    }
+
+    await db.sequelize.transaction(async (transaction) => {
+      await AdminPermission.destroy({ where: { roleId }, transaction });
+
+      await AdminPermission.bulkCreate(normalizedRows, { transaction });
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Permissions updated successfully",
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   ensureDefaultAdmin,
   loginAdmin,
@@ -407,6 +543,8 @@ module.exports = {
   createPermission,
   getPermissionMatrix,
   getDashboardStats,
+  getStaffStrength,
+  getRolePermissions,
+  updateRolePermissions,
   getAllUsers,
 };
-
