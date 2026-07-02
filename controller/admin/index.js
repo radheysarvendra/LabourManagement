@@ -297,7 +297,7 @@ const getPermissionMatrix = async (req, res) => {
   try {
     const roles = await Role.findAll({
       include: [{ model: AdminPermission, as: "adminPermissions", required: false }],
-      order: [["accessLevel", "DESC"], ["name", "ASC"]],
+      order: [["name", "ASC"]],
     });
 
     return res.status(200).send({
@@ -388,6 +388,47 @@ const getStaffStrength = async (req, res) => {
         if (!city) return true;
         return row.city.toLowerCase().includes(String(city).trim().toLowerCase());
       });
+
+    return res.status(200).json({
+      success: true,
+      data: { rows: normalizedRows },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getOrderStrength = async (req, res) => {
+  try {
+    const { fromDate, toDate, state } = req.query;
+    const where = {};
+
+    if (state) {
+      where.state = { [Op.iLike]: `%${String(state).trim()}%` };
+    }
+    if (fromDate || toDate) {
+      where.createdAt = {};
+      if (fromDate) where.createdAt[Op.gte] = new Date(fromDate);
+      if (toDate) where.createdAt[Op.lte] = new Date(toDate);
+    }
+
+    const rows = await Order.findAll({
+      where,
+      attributes: [
+        "state",
+        [fn("COUNT", col("id")), "count"],
+      ],
+      group: ["state"],
+      order: [["state", "ASC"]],
+      raw: true,
+    });
+
+    const normalizedRows = rows
+      .map((row) => ({
+        state: String(row.state || "").trim(),
+        count: Number(row.count || 0),
+      }))
+      .filter((row) => row.state);
 
     return res.status(200).json({
       success: true,
@@ -544,6 +585,7 @@ module.exports = {
   getPermissionMatrix,
   getDashboardStats,
   getStaffStrength,
+  getOrderStrength,
   getRolePermissions,
   updateRolePermissions,
   getAllUsers,
