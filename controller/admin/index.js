@@ -60,6 +60,10 @@ const getAdminResponse = async (adminId) => {
 };
 
 const ensureDefaultAdmin = async () => {
+  if (process.env.SKIP_DEFAULT_ADMIN_BOOTSTRAP === "true") {
+    return;
+  }
+
   if (!DEFAULT_ADMIN_PASSWORD) {
     throw new Error("DEFAULT_ADMIN_PASSWORD env var required for default admin setup");
   }

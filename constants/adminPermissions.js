@@ -28,12 +28,12 @@ const ADMIN_MODULES = {
 };
 
 const DEFAULT_ADMIN_ROLES = [
-  { name: "super_admin", description: "Full admin dashboard access", accessLevel: 100 },
-  { name: "admin", description: "Admin dashboard access", accessLevel: 90 },
-  { name: "sub_admin", description: "Limited admin dashboard access", accessLevel: 70 },
-  { name: "field_officer", description: "Field verification and order coordination", accessLevel: 50 },
-  { name: "support", description: "Customer support access", accessLevel: 40 },
-  { name: "verifier", description: "Labour and owner verification access", accessLevel: 30 },
+  { name: "super_admin", description: "Full admin dashboard access" },
+  { name: "admin", description: "Admin dashboard access" },
+  { name: "sub_admin", description: "Limited admin dashboard access" },
+  { name: "field_officer", description: "Field verification and order coordination" },
+  { name: "support", description: "Customer support access" },
+  { name: "verifier", description: "Labour and owner verification access" },
 ];
 
 const FULL_ACCESS = {

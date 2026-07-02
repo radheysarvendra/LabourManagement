@@ -252,6 +252,7 @@ router.post("/auth/logout", verifyToken, authController.logout);
 router.post("/api/admin/auth/login", adminController.loginAdmin);
 router.get("/api/admin/profile", verifyAdminToken, adminController.getAdminProfile);
 router.get("/api/admin/dashboard/stats", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getDashboardStats);
+router.get("/api/admin/dashboard/order-strength", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getOrderStrength);
 router.get("/api/admin/dashboard/staff-strength", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getStaffStrength);
 router.post("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canCreate"), adminController.createAdmin);
 router.get("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canView"), adminController.getAdmins);
