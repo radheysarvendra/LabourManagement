@@ -63,6 +63,102 @@ router.get("/api/status", async (req, res) => {
   }
 });
 
+router.get("/api/public-stats", async (req, res) => {
+  try {
+    const db = require("../model/index");
+    const [
+      labourCount,
+      contractorCount,
+      completedOrders,
+      activeWorkers,
+      verifiedProfiles,
+    ] = await Promise.all([
+      db.labour.count(),
+      db.owner.count(),
+      db.order.count({ where: { status: "completed" } }).catch(() => 0),
+      db.labour.count({ where: { isAvailable: true } }).catch(() => db.labour.count()),
+      db.labour.count({ where: { verificationStatus: "verified" } }).catch(() => 0),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalLabourers: labourCount,
+        totalContractors: contractorCount,
+        completedOrders,
+        activeWorkers,
+        verifiedProfiles,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.get("/api/site-settings", (req, res) => {
+  return res.status(200).json({
+    success: true,
+    data: {
+      siteName: process.env.SITE_NAME || "Dehaadi",
+      logo: process.env.SITE_LOGO || "https://example.com/logo.png",
+      phone: process.env.SITE_PHONE || "+919999999999",
+      whatsapp: process.env.SITE_WHATSAPP || "+919999999999",
+      email: process.env.SITE_EMAIL || "support@dehaadi.com",
+      footerText: process.env.SITE_FOOTER_TEXT || "Trusted labour and contractor platform",
+      socialLinks: {
+        facebook: process.env.SITE_FACEBOOK || "",
+        instagram: process.env.SITE_INSTAGRAM || "",
+        linkedin: process.env.SITE_LINKEDIN || "",
+      },
+    },
+  });
+});
+
+router.get("/api/public/testimonials", (_req, res) => {
+  return res.status(200).json({
+    success: true,
+    data: [
+      {
+        id: 1,
+        name: "Amit Kumar",
+        message: "Dehaadi helped us find reliable labour quickly.",
+        rating: 5,
+        city: "Noida",
+      },
+    ],
+  });
+});
+
+router.get("/api/public/faqs", (_req, res) => {
+  return res.status(200).json({
+    success: true,
+    data: [
+      {
+        id: 1,
+        question: "How does Dehaadi work?",
+        answer: "Users can view labour and contractor information and contact the team.",
+      },
+    ],
+  });
+});
+
+router.post("/api/contact-messages", (req, res) => {
+  const { name, phone, message } = req.body || {};
+  if (!name || !phone || !message) {
+    return res.status(400).json({
+      success: false,
+      message: "name, phone, and message are required",
+    });
+  }
+
+  console.log("Contact message received:", { name, phone, message });
+
+  return res.status(200).json({
+    success: true,
+    message: "Contact request submitted successfully",
+  });
+});
+
 // Labour routes  (createLabour → /labour POST)
 // Unified registration (new flow — all 4 roles, single registration)
 router.post("/api/auth/register", newAuthController.register);
