@@ -48,7 +48,11 @@ const startServer = async () => {
 
   setImmediate(async () => {
     try {
-      await connectDB();
+      const dbReady = await connectDB();
+      if (!dbReady) {
+        console.log("Startup tasks skipped because database connection is unavailable");
+        return;
+      }
       if (shouldBootstrapAdmin) {
         await ensureDefaultAdmin();
       }
