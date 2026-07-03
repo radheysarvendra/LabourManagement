@@ -5,9 +5,9 @@ const Role = db.role;
 // CREATE ROLE
 const createRole = async (req, res) => {
   try {
-    const { name, description, accessLevel } = req.body;
+    const { name, description } = req.body;
 
-    if (!name || accessLevel === undefined) {
+    if (!name) {
       return res.status(400).send({
         success: false,
         message: msg.REQUIRED_FIELDS_MISSING,
@@ -17,7 +17,6 @@ const createRole = async (req, res) => {
     const data = await Role.create({
       name: name,
       description: description,
-      accessLevel: accessLevel,
     });
 
     return res.status(201).send({
@@ -87,7 +86,7 @@ const getRoleById = async (req, res) => {
 const updateRoleById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, accessLevel } = req.body;
+    const { name, description } = req.body;
 
     const role = await Role.findOne({ where: { id } });
 
@@ -99,7 +98,7 @@ const updateRoleById = async (req, res) => {
     }
 
     // Check for required fields (if updated)
-    if (!name || accessLevel === undefined) {
+    if (!name) {
       return res.status(400).send({
         success: false,
         message: msg.REQUIRED_FIELDS_MISSING,
@@ -107,7 +106,7 @@ const updateRoleById = async (req, res) => {
     }
 
     await Role.update(
-      { name, description, accessLevel },
+      { name, description },
       { where: { id } }
     );
 

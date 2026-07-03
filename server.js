@@ -13,6 +13,8 @@ const app = express();
 const server = http.createServer(app);
 
 const port = config.PORT;
+const shouldRunStartupSeeds = process.env.RUN_STARTUP_SEEDS !== "false";
+const shouldBootstrapAdmin = process.env.SKIP_DEFAULT_ADMIN_BOOTSTRAP !== "true";
 
 // middleware
 app.use(cors());
@@ -31,18 +33,34 @@ const routes = require("./routes");
 app.use("", routes);
 
 const runStartupTasks = async () => {
+  if (!shouldRunStartupSeeds) {
+    console.log("Startup seeding skipped (RUN_STARTUP_SEEDS=false)");
+    return;
+  }
   await seedSkills(db.skill, db.category, db.categorySkill);
   await seedAddressData(db);
 };
 
 const startServer = async () => {
-  await connectDB();
-  await ensureDefaultAdmin();
-  await runStartupTasks();
-
   server.listen(port, "0.0.0.0", () => {
     console.log(`Server running on port ${port}`);
-    console.log("Startup tasks completed");
+  });
+
+  setImmediate(async () => {
+    try {
+      const dbReady = await connectDB();
+      if (!dbReady) {
+        console.log("Startup tasks skipped because database connection is unavailable");
+        return;
+      }
+      if (shouldBootstrapAdmin) {
+        await ensureDefaultAdmin();
+      }
+      await runStartupTasks();
+      console.log("Startup tasks completed");
+    } catch (error) {
+      console.error("Startup tasks failed:", error);
+    }
   });
 };
 

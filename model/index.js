@@ -52,11 +52,13 @@ const connectDB = async () => {
       await ensureSchema(db);
       await sequelize.sync({ alter: false, force: false });
       console.log("Database models are ready");
+    } else {
+      console.log("Database sync skipped (ENABLE_DB_SYNC=false)");
     }
 
   } catch (error) {
     console.error("❌ DB Connection Error:", error);
-    process.exit(1);
+    return false;
   }
 };
 

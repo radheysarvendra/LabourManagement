@@ -80,6 +80,10 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: true,
     },
+    passwordHash: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
   }, {
     tableName: "users",
     timestamps: true,

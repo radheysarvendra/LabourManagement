@@ -1,7 +1,5 @@
 const {
   INTEGER,
-  STRING,
-  ENUM,
   TEXT,
 } = require("sequelize");
 
@@ -12,9 +10,8 @@ module.exports = (Sequelize, DataTypes) => {
       autoIncrement: true,
       primaryKey: true,
       allowNull: false,
-    UNIQUE: true,
     },
-   name: {
+    name: {
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
@@ -22,9 +19,6 @@ module.exports = (Sequelize, DataTypes) => {
     description: {
       type: TEXT,
       allowNull: true,
-    },
-    accessLevel: {
-      type: INTEGER, 
     },
   });
 
