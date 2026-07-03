@@ -166,9 +166,13 @@ router.post("/api/profile/complete-owner", verifyToken, newAuthController.comple
 router.post("/api/profile/complete-labour", verifyToken, newAuthController.completeLabourProfile);
 
 router.post("/auth/login", authController.login);
+router.post("/auth/login-password", authController.loginPassword);
 router.post("/auth/check-phone", authController.checkPhone);
 router.post("/auth/request-otp", authController.requestOtp);
 router.post("/auth/verify-otp", authController.verifyOtp);
+router.post("/auth/request-password-reset", authController.requestPasswordReset);
+router.post("/auth/verify-password-reset-otp", authController.verifyPasswordResetOtp);
+router.post("/auth/reset-password", authController.resetPassword);
 router.post("/auth/switch-role", verifyToken, authController.switchRole);
 router.get("/pincode/:pincode", locationController.getPincodeDetails);
 router.get("/api/address/states", addressController.getStates);

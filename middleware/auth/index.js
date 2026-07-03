@@ -16,6 +16,7 @@ const OTP_EXPIRY_MINUTES = Number(process.env.OTP_EXPIRY_MINUTES || 10);
 const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || "";
 // Show OTP in response only when not using real SMS (no key = test mode)
 const EXPOSE_TEST_OTP = process.env.EXPOSE_TEST_OTP === "true" || !FAST2SMS_API_KEY;
+const DEFAULT_PASSWORD = process.env.DEFAULT_LOGIN_PASSWORD || "1234";
 
 const generateOtp = () => {
   // Only generate random OTP when SMS is actually configured — otherwise use test OTP
@@ -154,6 +155,25 @@ const hashOtp = (otp) => {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.scryptSync(String(otp), salt, 64).toString("hex");
   return `${salt}:${hash}`;
+};
+
+const hashPassword = (password) => {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(String(password), salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+};
+
+const verifyPassword = (password, savedHash) => {
+  if (!savedHash) return String(password || "") === DEFAULT_PASSWORD;
+  if (!savedHash.includes(":")) return String(password || "") === DEFAULT_PASSWORD;
+  const [salt, hash] = savedHash.split(":");
+  const verifyHash = crypto.scryptSync(String(password), salt, 64).toString("hex");
+  const savedBuffer = Buffer.from(hash, "hex");
+  const verifyBuffer = Buffer.from(verifyHash, "hex");
+  return (
+    savedBuffer.length === verifyBuffer.length &&
+    crypto.timingSafeEqual(savedBuffer, verifyBuffer)
+  );
 };
 
 const verifyOtpHash = (otp, savedHash) => {
@@ -672,9 +692,138 @@ const checkPhone = async (req, res) => {
   }
 };
 
+const loginPassword = async (req, res) => {
+  try {
+    const phone = normalizePhone(req.body.phone);
+    const password = String(req.body.password || "");
+    const activeRole = req.body.activeRole || req.body.userType || req.body.role;
+
+    if (phone.length !== 10 || !password) {
+      return res.status(400).send({ success: false, message: "Phone and password are required" });
+    }
+
+    const globalUser = await User.findOne({
+      where: { phone },
+      include: [{ model: db.userRole, as: "userRoles", required: false,
+        include: [{ model: db.appRole, as: "appRole" }] }],
+    });
+
+    if (!globalUser) {
+      return res.status(404).send({ success: false, message: "User not found." });
+    }
+
+    if (!verifyPassword(password, globalUser.passwordHash)) {
+      return res.status(401).send({ success: false, message: "Invalid password." });
+    }
+
+    const roles = (globalUser.userRoles || []).map((ur) => ur.appRole?.code).filter(Boolean);
+    const selectedRole = activeRole || roles[0] || "LABOUR";
+
+    await AuthOtp.destroy({ where: { phone } });
+    const otp = DEFAULT_PASSWORD;
+    const otpHash = hashOtp(otp);
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+    await AuthOtp.create({ phone, userId: globalUser.id, otpHash, expiresAt, verifiedAt: new Date() });
+
+    const roleCode = String(selectedRole).toUpperCase();
+    const userType = roleCode === "LABOUR" ? "labour" : roleCode === "CONTRACTOR" ? "contractor" : "owner";
+    const profile = { id: globalUser.id, phone: globalUser.phone, name: globalUser.name, email: globalUser.email || "" };
+
+    const { token } = await generateSession(globalUser.id, selectedRole.toUpperCase());
+
+    return res.status(200).send({
+      success: true,
+      token,
+      userId: globalUser.id,
+      globalUserId: globalUser.id,
+      isRegistered: true,
+      roles,
+      permissions: [],
+      userType,
+      type: userType,
+      activeRole: selectedRole,
+      labourId: null,
+      ownerId: null,
+      contractorId: null,
+      profile,
+      user: profile,
+    });
+  } catch (err) {
+    return res.status(500).send({ success: false, message: err.message });
+  }
+};
+
+const requestPasswordReset = async (req, res) => {
+  try {
+    const phone = normalizePhone(req.body.phone);
+    if (phone.length !== 10) {
+      return res.status(400).send({ success: false, message: "Enter a 10-digit mobile number" });
+    }
+    const user = await User.findOne({ where: { phone } });
+    if (!user) return res.status(404).send({ success: false, message: "User not found." });
+
+    const otp = DEFAULT_PASSWORD;
+    const otpHash = hashOtp(otp);
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+    await AuthOtp.destroy({ where: { phone } });
+    await AuthOtp.create({ phone, userId: user.id, otpHash, expiresAt });
+
+    return res.status(200).send({ success: true, testOtp: otp });
+  } catch (err) {
+    return res.status(500).send({ success: false, message: err.message });
+  }
+};
+
+const verifyPasswordResetOtp = async (req, res) => {
+  try {
+    const phone = normalizePhone(req.body.phone);
+    const otp = String(req.body.otp || "").trim();
+    if (phone.length !== 10 || !otp) {
+      return res.status(400).send({ success: false, message: "Phone number and OTP are required" });
+    }
+    const otpRecord = await AuthOtp.findOne({ where: { phone, verifiedAt: null }, order: [["createdAt", "DESC"]] });
+    if (!otpRecord) return res.status(404).send({ success: false, message: "OTP not found. Request a new OTP." });
+    if (new Date(otpRecord.expiresAt).getTime() < Date.now()) {
+      return res.status(400).send({ success: false, message: "OTP expired. Request a new OTP." });
+    }
+    if (!verifyOtpHash(otp, otpRecord.otpHash)) {
+      return res.status(400).send({ success: false, message: "Invalid OTP" });
+    }
+    await otpRecord.update({ verifiedAt: new Date() });
+    const resetToken = jwt.sign({ phone, purpose: "password-reset" }, TOKEN_SECRET, { expiresIn: "15m" });
+    return res.status(200).send({ success: true, resetToken });
+  } catch (err) {
+    return res.status(500).send({ success: false, message: err.message });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const resetToken = String(req.body.resetToken || "");
+    const newPassword = String(req.body.newPassword || "");
+    if (!resetToken || !newPassword) {
+      return res.status(400).send({ success: false, message: "resetToken and newPassword are required" });
+    }
+    const decoded = jwt.verify(resetToken, TOKEN_SECRET);
+    if (decoded.purpose !== "password-reset") {
+      return res.status(401).send({ success: false, message: "Invalid reset token" });
+    }
+    const user = await User.findOne({ where: { phone: decoded.phone } });
+    if (!user) return res.status(404).send({ success: false, message: "User not found." });
+    await user.update({ passwordHash: hashPassword(newPassword) });
+    return res.status(200).send({ success: true, message: "Password updated successfully." });
+  } catch (err) {
+    return res.status(401).send({ success: false, message: "Invalid or expired reset token" });
+  }
+};
+
 module.exports = {
   login,
+  loginPassword,
   requestOtp,
+  requestPasswordReset,
+  verifyPasswordResetOtp,
+  resetPassword,
   verifyOtp,
   verifyToken,
   logout,
