@@ -32,7 +32,11 @@ router.get("/", (req, res) => {
 });
 
 router.get("/api/health", (req, res) => {
-  res.status(200).json({ ok: true, commit: "8d49d6b" });
+  res.status(200).json({
+    success: true,
+    service: "labour-backend",
+    status: "ok",
+  });
 });
 
 router.get("/health", (req, res) => {
@@ -45,18 +49,10 @@ router.get("/health", (req, res) => {
 
 router.get("/api/status", async (req, res) => {
   try {
-    const db = require("../model/index");
-    const [labourCount, ownerCount, adminCount] = await Promise.all([
-      db.labour.count(),
-      db.owner.count(),
-      db.admin.count(),
-    ]);
     res.status(200).send({
       success: true,
+      service: "labour-backend",
       status: "ok",
-      db: "connected",
-      counts: { labours: labourCount, owners: ownerCount, admins: adminCount },
-      timestamp: new Date().toISOString(),
     });
   } catch (err) {
     res.status(500).send({ success: false, status: "error", message: err.message });
