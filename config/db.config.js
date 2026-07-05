@@ -9,13 +9,17 @@ const databaseUrl = process.env.DATABASE_URL
   || (isProduction ? process.env.LIVE_DATABASE_URL : process.env.LOCAL_DATABASE_URL)
   || process.env.LIVE_DATABASE_URL
   || "";
-const requiredInProduction = ["SECRET_KEY", "DEFAULT_ADMIN_PASSWORD"];
+const requiredInProduction = ["SECRET_KEY"];
 
 if (isProduction) {
   const missing = requiredInProduction.filter((key) => !process.env[key]);
 
   if (!databaseUrl) {
     missing.push("DATABASE_URL or LIVE_DATABASE_URL");
+  }
+
+  if (process.env.SKIP_DEFAULT_ADMIN_BOOTSTRAP !== "true" && !process.env.DEFAULT_ADMIN_PASSWORD) {
+    missing.push("DEFAULT_ADMIN_PASSWORD");
   }
 
   if (missing.length > 0) {
