@@ -17,6 +17,7 @@ const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || "";
 // Show OTP in response only when not using real SMS (no key = test mode)
 const EXPOSE_TEST_OTP = process.env.EXPOSE_TEST_OTP === "true" || !FAST2SMS_API_KEY;
 const DEFAULT_PASSWORD = process.env.DEFAULT_LOGIN_PASSWORD || "1234";
+const ALLOW_LEGACY_DEFAULT_PASSWORD = process.env.ALLOW_LEGACY_DEFAULT_PASSWORD === "true";
 
 const generateOtp = () => {
   // Only generate random OTP when SMS is actually configured — otherwise use test OTP
@@ -164,8 +165,8 @@ const hashPassword = (password) => {
 };
 
 const verifyPassword = (password, savedHash) => {
-  if (!savedHash) return String(password || "") === DEFAULT_PASSWORD;
-  if (!savedHash.includes(":")) return String(password || "") === DEFAULT_PASSWORD;
+  if (!savedHash) return false;
+  if (!savedHash.includes(":")) return false;
   const [salt, hash] = savedHash.split(":");
   const verifyHash = crypto.scryptSync(String(password), salt, 64).toString("hex");
   const savedBuffer = Buffer.from(hash, "hex");
@@ -189,6 +190,47 @@ const verifyOtpHash = (otp, savedHash) => {
     crypto.timingSafeEqual(savedBuffer, verifyBuffer)
   );
 };
+
+const normalizeRoleCode = (role) => String(role || "").trim().toUpperCase();
+
+const buildStandardAuthResponse = ({
+  token,
+  user,
+  roles = [],
+  activeRole,
+  userType,
+  labourId = null,
+  ownerId = null,
+  contractorId = null,
+  message = "Login successful",
+}) => ({
+  success: true,
+  message,
+  token,
+  userId: user?.id || null,
+  globalUserId: user?.id || null,
+  isRegistered: true,
+  roles,
+  permissions: [],
+  userType,
+  type: userType,
+  activeRole,
+  labourId,
+  ownerId,
+  contractorId,
+  profile: {
+    id: user?.id || null,
+    phone: user?.phone || null,
+    name: user?.name || "",
+    email: user?.email || "",
+  },
+  user: {
+    id: user?.id || null,
+    phone: user?.phone || null,
+    name: user?.name || "",
+    email: user?.email || "",
+  },
+});
 
 // ── Old-flow user lookups (kept for backward compat) ─────────────────────────
 
@@ -311,7 +353,7 @@ const requestOtp = async (req, res) => {
       const otpHash = hashOtp(otp);
       const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-      await AuthOtp.create({ phone, userId: globalUser.id, otpHash, expiresAt });
+      await AuthOtp.create({ phone, userId: globalUser.id, otpHash, expiresAt, purpose: "login" });
       await sendSmsOtp(phone, otp);
 
       const roles = globalUser.userRoles.map((ur) => ur.appRole?.code).filter(Boolean);
@@ -358,6 +400,7 @@ const requestOtp = async (req, res) => {
           userType: item.userType,
           otpHash,
           expiresAt,
+          purpose: "login",
         }).catch(() => {})
       )
     );
@@ -398,7 +441,7 @@ const verifyOtp = async (req, res) => {
 
     // Find the most recent unverified OTP for this phone
     const otpRecord = await AuthOtp.findOne({
-      where: { phone, verifiedAt: null },
+      where: { phone, verifiedAt: null, purpose: "login" },
       order: [["createdAt", "DESC"]],
     });
 
@@ -427,7 +470,7 @@ const verifyOtp = async (req, res) => {
     });
 
     if (globalUser && globalUser.userRoles && globalUser.userRoles.length > 0) {
-      const roles = globalUser.userRoles.map((ur) => ur.appRole?.code).filter(Boolean);
+      const roles = globalUser.userRoles.map((ur) => normalizeRoleCode(ur.appRole?.code)).filter(Boolean);
       const selectedRole = activeRole || roles[0];
 
       if (!roles.includes(selectedRole)) {
@@ -441,7 +484,7 @@ const verifyOtp = async (req, res) => {
       const { token } = await generateSession(globalUser.id, selectedRole);
 
       // Resolve legacy profile IDs so the app can use ownerId/labourId/contractorId
-      const roleCode = String(selectedRole).toUpperCase();
+      const roleCode = normalizeRoleCode(selectedRole);
       let labourId = null, ownerId = null, contractorId = null;
       if (roleCode === "LABOUR") {
         const lp = await Labour.findOne({ where: { userId: globalUser.id }, attributes: ["id"] });
@@ -452,24 +495,16 @@ const verifyOtp = async (req, res) => {
         if (roleCode === "CONTRACTOR") contractorId = ownerId;
       }
       const userType = roleCode === "LABOUR" ? "labour" : roleCode === "CONTRACTOR" ? "contractor" : "owner";
-      const profile  = { id: ownerId || labourId || globalUser.id, name: globalUser.name, phone: globalUser.phone };
-
-      return res.status(200).send({
-        success: true,
-        message: "Login successful",
+      return res.status(200).send(buildStandardAuthResponse({
         token,
-        userId: globalUser.id,
-        activeRole: selectedRole,
-        userType,
-        isRegistered: true,
+        user: globalUser,
         roles,
-        profile,
-        user: profile,
+        activeRole: roleCode,
+        userType,
         labourId,
         ownerId,
         contractorId,
-        flow: "new",
-      });
+      }));
     }
 
     // Old flow fallback — userType column no longer exists in authOtps; look up by phone
@@ -696,7 +731,7 @@ const loginPassword = async (req, res) => {
   try {
     const phone = normalizePhone(req.body.phone);
     const password = String(req.body.password || "");
-    const activeRole = req.body.activeRole || req.body.userType || req.body.role;
+    const activeRole = normalizeRoleCode(req.body.activeRole || req.body.userType || req.body.role);
 
     if (phone.length !== 10 || !password) {
       return res.status(400).send({ success: false, message: "Phone and password are required" });
@@ -713,41 +748,46 @@ const loginPassword = async (req, res) => {
     }
 
     if (!verifyPassword(password, globalUser.passwordHash)) {
-      return res.status(401).send({ success: false, message: "Invalid password." });
+      if (!(ALLOW_LEGACY_DEFAULT_PASSWORD && password === DEFAULT_PASSWORD)) {
+        return res.status(401).send({ success: false, message: "Invalid password." });
+      }
     }
 
-    const roles = (globalUser.userRoles || []).map((ur) => ur.appRole?.code).filter(Boolean);
-    const selectedRole = activeRole || roles[0] || "LABOUR";
+    const roles = (globalUser.userRoles || []).map((ur) => normalizeRoleCode(ur.appRole?.code)).filter(Boolean);
+    const selectedRole = activeRole || (roles.length === 1 ? roles[0] : null);
 
-    await AuthOtp.destroy({ where: { phone } });
-    const otp = DEFAULT_PASSWORD;
-    const otpHash = hashOtp(otp);
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
-    await AuthOtp.create({ phone, userId: globalUser.id, otpHash, expiresAt, verifiedAt: new Date() });
+    if (!selectedRole) {
+      return res.status(400).send({
+        success: false,
+        message: `Select one active role. Available roles: ${roles.join(", ")}`,
+      });
+    }
 
-    const roleCode = String(selectedRole).toUpperCase();
-    const userType = roleCode === "LABOUR" ? "labour" : roleCode === "CONTRACTOR" ? "contractor" : "owner";
-    const profile = { id: globalUser.id, phone: globalUser.phone, name: globalUser.name, email: globalUser.email || "" };
+    const { token } = await generateSession(globalUser.id, selectedRole);
+    const roleCode = normalizeRoleCode(selectedRole);
+    let labourId = null;
+    let ownerId = null;
+    let contractorId = null;
 
-    const { token } = await generateSession(globalUser.id, selectedRole.toUpperCase());
+    if (roleCode === "LABOUR") {
+      const lp = await Labour.findOne({ where: { userId: globalUser.id }, attributes: ["id"] });
+      labourId = lp?.id || null;
+    } else {
+      const op = await Owner.findOne({ where: { userId: globalUser.id }, attributes: ["id"] });
+      ownerId = op?.id || null;
+      if (roleCode === "CONTRACTOR") contractorId = ownerId;
+    }
 
-    return res.status(200).send({
-      success: true,
+    return res.status(200).send(buildStandardAuthResponse({
       token,
-      userId: globalUser.id,
-      globalUserId: globalUser.id,
-      isRegistered: true,
+      user: globalUser,
       roles,
-      permissions: [],
-      userType,
-      type: userType,
-      activeRole: selectedRole,
-      labourId: null,
-      ownerId: null,
-      contractorId: null,
-      profile,
-      user: profile,
-    });
+      activeRole: roleCode,
+      userType: roleCode === "LABOUR" ? "labour" : roleCode === "CONTRACTOR" ? "contractor" : "owner",
+      labourId,
+      ownerId,
+      contractorId,
+    }));
   } catch (err) {
     return res.status(500).send({ success: false, message: err.message });
   }
@@ -762,13 +802,15 @@ const requestPasswordReset = async (req, res) => {
     const user = await User.findOne({ where: { phone } });
     if (!user) return res.status(404).send({ success: false, message: "User not found." });
 
-    const otp = DEFAULT_PASSWORD;
+    const otp = generateOtp();
     const otpHash = hashOtp(otp);
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
     await AuthOtp.destroy({ where: { phone } });
-    await AuthOtp.create({ phone, userId: user.id, otpHash, expiresAt });
+    await AuthOtp.create({ phone, userId: user.id, otpHash, expiresAt, purpose: "password_reset" });
 
-    return res.status(200).send({ success: true, testOtp: otp });
+    const response = { success: true, message: "Password reset OTP sent successfully" };
+    if (EXPOSE_TEST_OTP) response.testOtp = otp;
+    return res.status(200).send(response);
   } catch (err) {
     return res.status(500).send({ success: false, message: err.message });
   }
@@ -781,7 +823,10 @@ const verifyPasswordResetOtp = async (req, res) => {
     if (phone.length !== 10 || !otp) {
       return res.status(400).send({ success: false, message: "Phone number and OTP are required" });
     }
-    const otpRecord = await AuthOtp.findOne({ where: { phone, verifiedAt: null }, order: [["createdAt", "DESC"]] });
+    const otpRecord = await AuthOtp.findOne({
+      where: { phone, verifiedAt: null, purpose: "password_reset" },
+      order: [["createdAt", "DESC"]],
+    });
     if (!otpRecord) return res.status(404).send({ success: false, message: "OTP not found. Request a new OTP." });
     if (new Date(otpRecord.expiresAt).getTime() < Date.now()) {
       return res.status(400).send({ success: false, message: "OTP expired. Request a new OTP." });
