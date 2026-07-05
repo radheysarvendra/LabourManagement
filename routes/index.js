@@ -49,13 +49,22 @@ router.get("/health", (req, res) => {
 
 router.get("/api/status", async (req, res) => {
   try {
+    const db = require("../model/index");
+    await db.sequelize.authenticate();
+
     res.status(200).send({
       success: true,
       service: "labour-backend",
       status: "ok",
+      db: "connected",
     });
   } catch (err) {
-    res.status(500).send({ success: false, status: "error", message: err.message });
+    res.status(500).send({
+      success: false,
+      status: "error",
+      db: "disconnected",
+      message: err.message,
+    });
   }
 });
 
@@ -244,7 +253,7 @@ router.post(
   "/api/upload",
   verifyToken,
   upload.single("file"),
-  upload.uploadToCloudinary("dehaade/temp"),
+  upload.uploadToCloudinary(),
   (req, res) => {
     if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded" });
     const { secure_url, public_id } = req.cloudinaryResult || {};
