@@ -46,6 +46,21 @@ const connectDB = async () => {
     await sequelize.authenticate();
     console.log("PostgreSQL Connected Successfully");
 
+    // Ensure critical auth column exists even when full sync is disabled.
+    try {
+      const queryInterface = sequelize.getQueryInterface();
+      const table = await queryInterface.describeTable("users");
+      if (!table.passwordHash) {
+        await queryInterface.addColumn("users", "passwordHash", {
+          type: DataTypes.STRING,
+          allowNull: true,
+        });
+        console.log("Added missing column users.passwordHash");
+      }
+    } catch (columnError) {
+      console.warn("Could not ensure users.passwordHash column:", columnError.message);
+    }
+
     if (shouldSyncDatabase) {
       // Existing installations may not yet have columns referenced by model
       // indexes. Bring the schema forward before Sequelize creates indexes.
