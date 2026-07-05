@@ -656,6 +656,7 @@ const ensureSchema = async (db) => {
   const authOtpNewColumns = {
     verifiedAt: { type: db.Sequelize.DATE, allowNull: true },
     attempts:   { type: db.Sequelize.INTEGER, allowNull: false, defaultValue: 0 },
+    purpose:    { type: db.Sequelize.STRING(30), allowNull: false, defaultValue: "login" },
   };
   for (const [col, def] of Object.entries(authOtpNewColumns)) {
     await ensureColumn(queryInterface, "authOtps", col, def);

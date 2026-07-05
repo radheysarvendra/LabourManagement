@@ -19,6 +19,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: false,
     },
+    purpose: {
+      type: DataTypes.STRING(30),
+      allowNull: false,
+      defaultValue: "login",
+    },
     attempts: {
       type: DataTypes.INTEGER,
       allowNull: false,
