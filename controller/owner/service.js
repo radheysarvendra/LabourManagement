@@ -163,7 +163,7 @@ const createOwnerService = async (payload) => {
   return buildOwnerSession(data, sessionUserType, msg.OWNER_CREATED_SUCCESSFULLY, 201);
 };
 
-const getAllOwnersService = async ({ page = 1, limit = 20, search = "" } = {}) => {
+const getAllOwnersService = async ({ page = 1, limit = 20, search = "", status, district, pincode, workType, state } = {}) => {
   const { Op } = db.Sequelize;
   const pageNumber = Math.max(Number(page) || 1, 1);
   const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
@@ -172,6 +172,7 @@ const getAllOwnersService = async ({ page = 1, limit = 20, search = "" } = {}) =
   const where = {
     registeredFrom: { [Op.in]: [ROLE_TYPES.OWNER, ROLE_TYPES.CONTRACTOR_CUSTOMER] },
   };
+  if (workType) where.workType = normalizeWorkType(workType);
 
   if (term) {
     where[Op.or] = [
@@ -187,9 +188,27 @@ const getAllOwnersService = async ({ page = 1, limit = 20, search = "" } = {}) =
     ];
   }
 
+  const userWhere = {};
+  if (status !== undefined && status !== "") {
+    if (["active", "inactive"].includes(String(status).toLowerCase())) {
+      userWhere.isActive = String(status).toLowerCase() === "active";
+    } else {
+      userWhere.status = Number(status);
+    }
+  }
+  if (district) userWhere.district = { [Op.iLike]: `%${String(district).trim()}%` };
+  if (state) userWhere.state = { [Op.iLike]: `%${String(state).trim()}%` };
+  if (pincode) userWhere.pincode = String(pincode).trim();
+
+  const include = [{
+    ...ownerInclude[0],
+    required: Object.keys(userWhere).length > 0,
+    where: Object.keys(userWhere).length > 0 ? userWhere : undefined,
+  }];
+
   const result = await Owner.findAndCountAll({
     where,
-    include: ownerInclude,
+    include,
     distinct: true,
     subQuery: false,
     order: [["id", "DESC"]],
@@ -201,11 +220,15 @@ const getAllOwnersService = async ({ page = 1, limit = 20, search = "" } = {}) =
     statusCode: 200,
     body: {
       success: true,
-      total: result.count,
-      page: pageNumber,
-      limit: pageLimit,
-      totalPages: Math.ceil(result.count / pageLimit),
-      data: result.rows.map(mapOwnerWithUser),
+      data: {
+        items: result.rows.map(mapOwnerWithUser),
+        pagination: {
+          page: pageNumber,
+          limit: pageLimit,
+          total: result.count,
+          totalPages: Math.ceil(result.count / pageLimit) || 1,
+        },
+      },
     },
   };
 };
@@ -259,6 +282,10 @@ const updateOwnerService = async (id, payload) => {
     if (location.pincode) userUpdate.pincode = location.pincode;
     if (location.postOffice) userUpdate.postOffice = location.postOffice;
     if (location.area) userUpdate.area = location.area;
+    if (payload.stateId !== undefined) userUpdate.stateId = payload.stateId || null;
+    if (payload.districtId !== undefined) userUpdate.districtId = payload.districtId || null;
+    if (payload.pincodeId !== undefined) userUpdate.pincodeId = payload.pincodeId || null;
+    if (payload.postOfficeId !== undefined) userUpdate.postOfficeId = payload.postOfficeId || null;
     if (payload.address !== undefined) userUpdate.address = payload.address;
     if (payload.isActive !== undefined) userUpdate.isActive = payload.isActive;
     if (payload.status !== undefined) userUpdate.status = payload.status;

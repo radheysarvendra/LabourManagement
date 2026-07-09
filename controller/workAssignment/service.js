@@ -195,9 +195,15 @@ const updateWorkAssignmentService = async (id, payload) => {
     };
   }
 
+  const statusMap = {
+    assigned: "upcoming",
+    in_progress: "active",
+  };
+  const requestedStatus = payload.status ? String(payload.status).toLowerCase() : null;
+  const dbStatus = statusMap[requestedStatus] || requestedStatus;
   const allowedStatus = ["upcoming", "active", "completed", "cancelled"];
 
-  if (payload.status && !allowedStatus.includes(payload.status)) {
+  if (dbStatus && !allowedStatus.includes(dbStatus)) {
     return {
       statusCode: 400,
       body: { success: false, message: "Invalid assignment status" },
@@ -206,11 +212,11 @@ const updateWorkAssignmentService = async (id, payload) => {
 
   await assignment.update({
     middlemanId: payload.middlemanId ?? assignment.middlemanId,
-    fromDate: payload.fromDate || assignment.fromDate,
+    fromDate: payload.workDate || payload.fromDate || assignment.fromDate,
     toDate: payload.toDate || assignment.toDate,
     workLocation: payload.workLocation ?? assignment.workLocation,
-    status: payload.status || assignment.status,
-    notes: payload.notes ?? assignment.notes,
+    status: dbStatus || assignment.status,
+    notes: payload.remark ?? payload.notes ?? assignment.notes,
   });
 
   return getAssignmentByIdService(id);
@@ -473,11 +479,25 @@ const getWorkAssignmentsService = async ({
     statusCode: 200,
     body: {
       success: true,
-      total: result.count,
-      page: pageNumber,
-      limit: pageLimit,
-      totalPages: Math.ceil(result.count / pageLimit),
-      data: result.rows.map(mapAssignment),
+      data: {
+        items: result.rows.map(mapAssignment).map((item) => ({
+          ...item,
+          bookingId: item.orderId,
+          labourName: item.assignmentLabours?.[0]?.labour?.user?.name || null,
+          skill: item.assignmentLabours?.[0]?.skillDetail?.skillName || item.order?.skill || null,
+          location: item.workLocation,
+          workDate: item.fromDate,
+          attendanceStatus: item.attendances?.[0]?.status || null,
+          paymentStatus: item.payments?.[0]?.paymentStatus || null,
+          amount: item.payments?.[0]?.netAmount || null,
+        })),
+        pagination: {
+          page: pageNumber,
+          limit: pageLimit,
+          total: result.count,
+          totalPages: Math.ceil(result.count / pageLimit) || 1,
+        },
+      },
     },
   };
 };
@@ -553,7 +573,14 @@ const getAssignmentLaboursService = async (workAssignmentId) => {
 
   return {
     statusCode: 200,
-    body: { success: true, total: data.length, data },
+    body: {
+      success: true,
+      data: {
+        rows: data,
+        total: data.length,
+        totalPages: 1,
+      },
+    },
   };
 };
 
@@ -700,11 +727,13 @@ const getAttendanceService = async ({ workAssignmentId, labourId, fromDate, toDa
     statusCode: 200,
     body: {
       success: true,
-      total: result.count,
       page: pageNumber,
       limit: pageLimit,
-      totalPages: Math.ceil(result.count / pageLimit),
-      data: result.rows,
+      data: {
+        rows: result.rows,
+        total: result.count,
+        totalPages: Math.ceil(result.count / pageLimit) || 1,
+      },
     },
   };
 };
@@ -856,18 +885,20 @@ const getPaymentsService = async ({ workAssignmentId, labourId, paymentStatus, p
     statusCode: 200,
     body: {
       success: true,
-      total: result.count,
       page: pageNumber,
       limit: pageLimit,
-      totalPages: Math.ceil(result.count / pageLimit),
-      data: result.rows.map((row) => {
-        const json = row.toJSON ? row.toJSON() : row;
-        return {
-          ...json,
-          daysWorked: (json.presentDays || 0) + (json.halfDays || 0) * 0.5,
-          totalAmount: json.netAmount,
-        };
-      }),
+      data: {
+        rows: result.rows.map((row) => {
+          const json = row.toJSON ? row.toJSON() : row;
+          return {
+            ...json,
+            daysWorked: (json.presentDays || 0) + (json.halfDays || 0) * 0.5,
+            totalAmount: json.netAmount,
+          };
+        }),
+        total: result.count,
+        totalPages: Math.ceil(result.count / pageLimit) || 1,
+      },
     },
   };
 };
@@ -901,6 +932,56 @@ const updatePaymentStatusService = async (workAssignmentId, paymentId, payload) 
   return getPaymentsService({ workAssignmentId });
 };
 
+const updateAssignmentAttendanceStatusService = async (workAssignmentId, payload) => {
+  const firstLabour = payload.labourId
+    ? { labourId: payload.labourId }
+    : await WorkAssignmentLabour.findOne({ where: { workAssignmentId }, attributes: ["labourId"] });
+
+  if (!firstLabour?.labourId) {
+    return { statusCode: 400, body: { success: false, message: "No labour assigned to this work assignment" } };
+  }
+
+  const result = await markAttendanceService(workAssignmentId, {
+    labourId: firstLabour.labourId,
+    attendanceDate: payload.attendanceDate,
+    status: payload.attendanceStatus || payload.status,
+    remarks: payload.remark || payload.remarks,
+    markedByType: "admin",
+  });
+
+  return {
+    statusCode: result.statusCode,
+    body: result.statusCode >= 400
+      ? result.body
+      : { success: true, message: "Attendance updated successfully" },
+  };
+};
+
+const updateAssignmentPaymentStatusService = async (workAssignmentId, payload) => {
+  const statusMap = {
+    partial: "approved",
+    failed: "cancelled",
+    refunded: "cancelled",
+  };
+  const paymentStatus = statusMap[payload.paymentStatus] || payload.paymentStatus;
+  const payment = await WorkPayment.findOne({
+    where: { workAssignmentId },
+    order: [["createdAt", "DESC"]],
+  });
+
+  if (!payment) {
+    return { statusCode: 404, body: { success: false, message: "Payment not found" } };
+  }
+
+  const result = await updatePaymentStatusService(workAssignmentId, payment.id, { paymentStatus });
+  return {
+    statusCode: result.statusCode,
+    body: result.statusCode >= 400
+      ? result.body
+      : { success: true, message: "Payment status updated successfully" },
+  };
+};
+
 module.exports = {
   createWorkAssignmentService,
   createAssignmentFromOrderService,
@@ -918,4 +999,6 @@ module.exports = {
   generatePaymentService,
   getPaymentsService,
   updatePaymentStatusService,
+  updateAssignmentAttendanceStatusService,
+  updateAssignmentPaymentStatusService,
 };

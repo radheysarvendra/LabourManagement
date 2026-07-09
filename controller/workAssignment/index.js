@@ -42,6 +42,11 @@ const getWorkAssignmentById = async (req, res) => {
 const updateWorkAssignment = async (req, res) => {
   try {
     const result = await workAssignmentService.updateWorkAssignmentService(req.params.id, req.body);
+    if (req.method === "PATCH" && req.originalUrl?.startsWith("/api/admin/work-assignments")) {
+      return res.status(result.statusCode).send(
+        result.statusCode >= 400 ? result.body : { success: true, message: "Assignment updated successfully" }
+      );
+    }
     return res.status(result.statusCode).send(result.body);
   } catch (err) {
     return res.status(500).send({ success: false, message: err.message });
@@ -171,6 +176,24 @@ const updatePaymentStatus = async (req, res) => {
   }
 };
 
+const updateAssignmentAttendanceStatus = async (req, res) => {
+  try {
+    const result = await workAssignmentService.updateAssignmentAttendanceStatusService(req.params.id, req.body);
+    return res.status(result.statusCode).send(result.body);
+  } catch (err) {
+    return res.status(500).send({ success: false, message: err.message });
+  }
+};
+
+const updateAssignmentPaymentStatus = async (req, res) => {
+  try {
+    const result = await workAssignmentService.updateAssignmentPaymentStatusService(req.params.id, req.body);
+    return res.status(result.statusCode).send(result.body);
+  } catch (err) {
+    return res.status(500).send({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   createWorkAssignment,
   createAssignmentFromOrder,
@@ -188,4 +211,6 @@ module.exports = {
   generatePayment,
   getPayments,
   updatePaymentStatus,
+  updateAssignmentAttendanceStatus,
+  updateAssignmentPaymentStatus,
 };

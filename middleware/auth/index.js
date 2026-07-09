@@ -748,7 +748,11 @@ const loginPassword = async (req, res) => {
     }
 
     if (!verifyPassword(password, globalUser.passwordHash)) {
-      if (!(ALLOW_LEGACY_DEFAULT_PASSWORD && password === DEFAULT_PASSWORD)) {
+      const canUseLegacyDefault =
+        password === DEFAULT_PASSWORD &&
+        (!globalUser.passwordHash || ALLOW_LEGACY_DEFAULT_PASSWORD);
+
+      if (!canUseLegacyDefault) {
         return res.status(401).send({ success: false, message: "Invalid password." });
       }
     }

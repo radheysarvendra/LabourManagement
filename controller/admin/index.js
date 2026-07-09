@@ -14,6 +14,7 @@ const Booking = db.booking;
 const {
   ADMIN_ACTIONS,
   ADMIN_MODULES,
+  ADMIN_MODULE_DETAILS,
   DEFAULT_ADMIN_ROLES,
   DEFAULT_ROLE_PERMISSIONS,
   getDefaultPermissionsForRole,
@@ -249,11 +250,13 @@ const getAdmins = async (req, res) => {
 
     return res.status(200).send({
       success: true,
-      total: result.count,
       page: pageNumber,
       limit: pageLimit,
-      totalPages: Math.ceil(result.count / pageLimit),
-      data: result.rows,
+      data: {
+        rows: result.rows,
+        total: result.count,
+        totalPages: Math.ceil(result.count / pageLimit) || 1,
+      },
     });
   } catch (err) {
     return res.status(500).send({ success: false, message: err.message });
@@ -262,10 +265,73 @@ const getAdmins = async (req, res) => {
 
 const getAdminProfile = async (req, res) => {
   try {
-    const data = await getAdminResponse(req.admin.id);
+    const admin = await getAdminResponse(req.admin.id);
+    const json = admin.toJSON ? admin.toJSON() : admin;
+    const permissions = (json.permissions || []).map((permission) => ({
+      module: permission.moduleName,
+      canView: permission.canView,
+      canCreate: permission.canCreate,
+      canEdit: permission.canUpdate,
+      canUpdate: permission.canUpdate,
+      canDelete: permission.canDelete,
+      canApprove: permission.canApprove,
+    }));
+    const data = {
+      id: json.id,
+      name: json.name,
+      email: json.email,
+      role: json.role,
+      permissions,
+    };
     return res.status(200).send({ success: true, data });
   } catch (err) {
     return res.status(500).send({ success: false, message: err.message });
+  }
+};
+
+const getMe = async (req, res) => {
+  try {
+    const admin = await getAdminResponse(req.admin.id);
+    const json = admin.toJSON ? admin.toJSON() : admin;
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: json.id,
+        name: json.name,
+        email: json.email,
+        role: json.role?.name || null,
+        avatar: null,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getMePermissions = async (req, res) => {
+  try {
+    const admin = await getAdminResponse(req.admin.id);
+    const json = admin.toJSON ? admin.toJSON() : admin;
+    const roleName = String(json.role?.name || "").toLowerCase();
+    const isFullAccess = roleName === "super_admin" || roleName === "admin";
+    const permissionMap = new Map(
+      (json.permissions || []).map((permission) => [String(permission.moduleName).toLowerCase(), permission])
+    );
+
+    const data = ADMIN_MODULE_DETAILS.map((moduleInfo) => {
+      const permission = permissionMap.get(moduleInfo.key.toLowerCase());
+      return {
+        module: moduleInfo.key,
+        view: isFullAccess || !!permission?.canView,
+        create: isFullAccess || !!permission?.canCreate,
+        edit: isFullAccess || !!permission?.canUpdate,
+        delete: isFullAccess || !!permission?.canDelete,
+      };
+    });
+
+    return res.status(200).json({ success: true, data });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -356,13 +422,195 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
+const getOverviewStats = async (req, res) => {
+  try {
+    const LabourProfile = db.labourProfile;
+    const ContractorProfile = db.contractorProfile;
+    const WorkAssignment = db.workAssignment;
+    const Skill = db.skill;
+    const Category = db.category;
+
+    const [
+      ownersTotal,
+      ownersActive,
+      laboursTotal,
+      laboursVerified,
+      laboursAvailable,
+      newContractorsTotal,
+      newContractorsActive,
+      oldContractorsTotal,
+      oldContractorsActive,
+      ordersTotal,
+      ordersPending,
+      ordersApproved,
+      ordersCompleted,
+      bookingsTotal,
+      bookingsPending,
+      bookingsConfirmed,
+      bookingsCancelled,
+      workAssignmentsTotal,
+      workAssignmentsActive,
+      workAssignmentsCompleted,
+      skillsTotal,
+      skillsActive,
+      categoriesTotal,
+      adminsTotal,
+      adminsActive,
+      rolesTotal,
+    ] = await Promise.all([
+      Owner.count(),
+      Owner.count({
+        include: [{ model: db.user, as: "user", required: true, where: { isActive: true } }],
+      }).catch(() => Owner.count()),
+      Labour.count(),
+      Labour.count({ where: { isVerified: true } }).catch(() => LabourProfile.count({ where: { verificationStatus: "verified" } })),
+      Labour.count({ where: { isAvailable: true } }),
+      ContractorProfile.count(),
+      ContractorProfile.count({ where: { isAvailable: true } }),
+      Owner.count({ where: { registeredFrom: "contractor" } }),
+      Owner.count({
+        where: { registeredFrom: "contractor" },
+        include: [{ model: db.user, as: "user", required: true, where: { isActive: true } }],
+      }).catch(() => Owner.count({ where: { registeredFrom: "contractor" } })),
+      Order.count(),
+      Order.count({ where: { adminStatus: "pending" } }),
+      Order.count({ where: { adminStatus: "approved" } }),
+      Order.count({ where: { status: "completed" } }),
+      Booking.count(),
+      Booking.count({ where: { status: "pending" } }),
+      Booking.count({ where: { status: "confirmed" } }),
+      Booking.count({ where: { status: "cancelled" } }),
+      WorkAssignment.count(),
+      WorkAssignment.count({ where: { status: "active" } }),
+      WorkAssignment.count({ where: { status: "completed" } }),
+      Skill.count(),
+      Skill.count({ where: { isActive: true } }),
+      Category.count({ where: { isActive: true } }),
+      Admin.count(),
+      Admin.count({ where: { status: "active" } }),
+      Role.count(),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        owners: {
+          total: ownersTotal,
+          active: ownersActive,
+          inactive: Math.max(ownersTotal - ownersActive, 0),
+        },
+        labours: {
+          total: laboursTotal,
+          verified: laboursVerified,
+          available: laboursAvailable,
+        },
+        contractors: {
+          total: newContractorsTotal + oldContractorsTotal,
+          active: newContractorsActive + oldContractorsActive,
+        },
+        orders: {
+          total: ordersTotal,
+          pending: ordersPending,
+          approved: ordersApproved,
+          completed: ordersCompleted,
+        },
+        bookings: {
+          total: bookingsTotal,
+          pending: bookingsPending,
+          confirmed: bookingsConfirmed,
+          cancelled: bookingsCancelled,
+        },
+        workAssignments: {
+          total: workAssignmentsTotal,
+          active: workAssignmentsActive,
+          completed: workAssignmentsCompleted,
+        },
+        skills: {
+          total: skillsTotal,
+          active: skillsActive,
+          categories: categoriesTotal,
+        },
+        admins: {
+          total: adminsTotal,
+          active: adminsActive,
+        },
+        roles: {
+          total: rolesTotal,
+        },
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getDashboardSummary = async (_req, res) => {
+  try {
+    const [totalLabourers, totalOwners, newContractors, oldContractors, totalOrders, pendingOrders, approvedOrders, totalBookings] = await Promise.all([
+      Labour.count(),
+      Owner.count({ where: { registeredFrom: { [Op.ne]: "contractor" } } }).catch(() => Owner.count()),
+      db.contractorProfile.count(),
+      Owner.count({ where: { registeredFrom: "contractor" } }),
+      Order.count(),
+      Order.count({ where: { adminStatus: "pending" } }),
+      Order.count({ where: { adminStatus: "approved" } }),
+      Booking.count(),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalLabourers,
+        totalOwners,
+        totalContractors: newContractors + oldContractors,
+        totalOrders,
+        pendingOrders,
+        approvedOrders,
+        totalBookings,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 const getStaffStrength = async (req, res) => {
   try {
-    const { state, city } = req.query;
+    const { state, city, groupBy } = req.query;
     const where = {};
 
     if (state) {
       where.state = { [Op.iLike]: `%${String(state).trim()}%` };
+    }
+
+    if (String(groupBy || "").toLowerCase() === "state") {
+      const rows = await db.user.findAll({
+        where,
+        attributes: [
+          "stateId",
+          "state",
+          [fn("COUNT", col("user.id")), "count"],
+        ],
+        group: ["stateId", "state"],
+        order: [["state", "ASC"]],
+        raw: true,
+      });
+
+      const stateIds = [...new Set(rows.map((row) => row.stateId).filter(Boolean))];
+      const states = stateIds.length
+        ? await db.state.findAll({ where: { id: stateIds }, attributes: ["id", "stateName"], raw: true })
+        : [];
+      const stateNameById = new Map(states.map((item) => [Number(item.id), item.stateName]));
+
+      const data = rows
+        .map((row) => ({
+          stateId: row.stateId || null,
+          state: row.state || stateNameById.get(Number(row.stateId)) || "Unknown",
+          count: Number(row.count || 0),
+        }))
+        .filter((row) => row.count > 0);
+
+      return res.status(200).json({ success: true, data });
     }
 
     const rows = await db.user.findAll({
@@ -396,6 +644,227 @@ const getStaffStrength = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: { rows: normalizedRows },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getStateWiseStaff = async (req, res) => {
+  req.query.groupBy = "state";
+
+  const originalJson = res.json.bind(res);
+  res.json = (payload) => {
+    if (!payload?.success || !Array.isArray(payload.data)) {
+      return originalJson(payload);
+    }
+
+    return originalJson({
+      success: true,
+      data: payload.data.map((row) => ({
+        stateId: row.stateId,
+        state: row.state,
+        staffCount: row.count,
+      })),
+    });
+  };
+
+  return getStaffStrength(req, res);
+};
+
+const getRecentActivity = async (req, res) => {
+  try {
+    const moduleName = String(req.query.module || "all").trim().toLowerCase();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
+    const activities = [];
+
+    const shouldInclude = (name) => moduleName === "all" || moduleName === name;
+    const pushActivity = (item) => activities.push(item);
+
+    if (shouldInclude("orders")) {
+      const rows = await Order.findAll({
+        attributes: ["id", "orderCode", "adminStatus", "status", "updatedAt", "createdAt"],
+        order: [["updatedAt", "DESC"]],
+        limit,
+        raw: true,
+      });
+      rows.forEach((row) => pushActivity({
+        id: `order-${row.id}`,
+        module: "orders",
+        action: row.adminStatus === "approved" ? "Order approved" : "Order updated",
+        message: `Order #${row.orderCode || row.id} is ${row.adminStatus || row.status}`,
+        createdAt: row.updatedAt || row.createdAt,
+      }));
+    }
+
+    if (shouldInclude("bookings")) {
+      const rows = await Booking.findAll({
+        attributes: ["id", "bookingCode", "status", "updatedAt", "createdAt"],
+        order: [["updatedAt", "DESC"]],
+        limit,
+        raw: true,
+      });
+      rows.forEach((row) => pushActivity({
+        id: `booking-${row.id}`,
+        module: "bookings",
+        action: "Booking updated",
+        message: `Booking #${row.bookingCode || row.id} is ${row.status}`,
+        createdAt: row.updatedAt || row.createdAt,
+      }));
+    }
+
+    if (shouldInclude("work_assignments") || shouldInclude("work-assignments")) {
+      const rows = await db.workAssignment.findAll({
+        attributes: ["id", "assignmentCode", "status", "updatedAt", "createdAt"],
+        order: [["updatedAt", "DESC"]],
+        limit,
+        raw: true,
+      });
+      rows.forEach((row) => pushActivity({
+        id: `work-assignment-${row.id}`,
+        module: "work_assignments",
+        action: "Work assignment updated",
+        message: `Assignment #${row.assignmentCode || row.id} is ${row.status}`,
+        createdAt: row.updatedAt || row.createdAt,
+      }));
+    }
+
+    if (shouldInclude("admins")) {
+      const rows = await Admin.findAll({
+        attributes: ["id", "name", "status", "updatedAt", "createdAt"],
+        order: [["updatedAt", "DESC"]],
+        limit,
+        raw: true,
+      });
+      rows.forEach((row) => pushActivity({
+        id: `admin-${row.id}`,
+        module: "admins",
+        action: "Admin updated",
+        message: `${row.name || "Admin"} is ${row.status}`,
+        createdAt: row.updatedAt || row.createdAt,
+      }));
+    }
+
+    const data = activities
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit);
+
+    return res.status(200).json({ success: true, data });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getRoleModules = async (_req, res) => {
+  try {
+    return res.status(200).json({ success: true, data: ADMIN_MODULE_DETAILS });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getGlobalSearch = async (req, res) => {
+  try {
+    const q = String(req.query.q || req.query.search || "").trim();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 5, 1), 20);
+
+    if (!q) {
+      return res.status(400).json({ success: false, message: "Search query is required" });
+    }
+
+    const like = `%${q}%`;
+    const [labours, owners, orders, bookings, assignments] = await Promise.all([
+      Labour.findAll({
+        include: [{ model: db.user, as: "user", required: true, attributes: ["id", "name", "phone"], where: {
+          [Op.or]: [{ name: { [Op.iLike]: like } }, { phone: { [Op.iLike]: like } }],
+        } }],
+        limit,
+        order: [["createdAt", "DESC"]],
+      }),
+      Owner.findAll({
+        include: [{ model: db.user, as: "user", required: true, attributes: ["id", "name", "phone"], where: {
+          [Op.or]: [{ name: { [Op.iLike]: like } }, { phone: { [Op.iLike]: like } }],
+        } }],
+        limit,
+        order: [["createdAt", "DESC"]],
+      }),
+      Order.findAll({
+        where: {
+          [Op.or]: [
+            { orderCode: { [Op.iLike]: like } },
+            { ownerName: { [Op.iLike]: like } },
+            { ownerPhone: { [Op.iLike]: like } },
+            { skill: { [Op.iLike]: like } },
+          ],
+        },
+        attributes: ["id", "orderCode", "ownerName", "ownerPhone", "skill", "status", "adminStatus", "createdAt"],
+        limit,
+        order: [["createdAt", "DESC"]],
+      }),
+      Booking.findAll({
+        where: {
+          [Op.or]: [
+            { bookingCode: { [Op.iLike]: like } },
+            { ownerName: { [Op.iLike]: like } },
+            { ownerPhone: { [Op.iLike]: like } },
+            { skill: { [Op.iLike]: like } },
+          ],
+        },
+        attributes: ["id", "bookingCode", "ownerName", "ownerPhone", "skill", "status", "createdAt"],
+        limit,
+        order: [["createdAt", "DESC"]],
+      }),
+      db.workAssignment.findAll({
+        where: { assignmentCode: { [Op.iLike]: like } },
+        attributes: ["id", "assignmentCode", "status", "fromDate", "toDate", "createdAt"],
+        limit,
+        order: [["createdAt", "DESC"]],
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        labours: labours.map((item) => {
+          const json = item.toJSON ? item.toJSON() : item;
+          return { id: json.id, userId: json.userId, name: json.user?.name || null, phone: json.user?.phone || null, labourCode: json.labourCode };
+        }),
+        owners: owners.map((item) => {
+          const json = item.toJSON ? item.toJSON() : item;
+          return { id: json.id, userId: json.userId, name: json.user?.name || null, phone: json.user?.phone || null, workType: json.workType };
+        }),
+        orders,
+        bookings,
+        assignments,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getNotifications = async (_req, res) => {
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const LabourProfile = db.labourProfile;
+    const [pendingOrders, pendingLabourVerifications, failedWorkPayments, failedOrderPayments, newBookings, newOrders] = await Promise.all([
+      Order.count({ where: { adminStatus: "pending" } }),
+      LabourProfile.count({ where: { verificationStatus: "pending" } }).catch(() => Labour.count({ where: { isVerified: false } })),
+      db.workPayment.count({ where: { paymentStatus: { [Op.in]: ["failed", "cancelled"] } } }).catch(() => 0),
+      db.orderPayment.count({ where: { status: { [Op.in]: ["failed", "cancelled"] } } }).catch(() => 0),
+      Booking.count({ where: { createdAt: { [Op.gte]: since } } }),
+      Order.count({ where: { createdAt: { [Op.gte]: since } } }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        pendingOrders,
+        pendingLabourVerifications,
+        failedPayments: failedWorkPayments + failedOrderPayments,
+        newBookings,
+        newOrders,
+      },
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -476,11 +945,13 @@ const getAllUsers = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      total: result.count,
       page,
       limit,
-      totalPages: Math.ceil(result.count / limit),
-      data: result.rows,
+      data: {
+        rows: result.rows,
+        total: result.count,
+        totalPages: Math.ceil(result.count / limit) || 1,
+      },
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -585,11 +1056,20 @@ module.exports = {
   createAdmin,
   getAdmins,
   getAdminProfile,
+  getMe,
+  getMePermissions,
   createPermission,
   getPermissionMatrix,
   getDashboardStats,
+  getOverviewStats,
+  getDashboardSummary,
   getStaffStrength,
+  getStateWiseStaff,
   getOrderStrength,
+  getRecentActivity,
+  getRoleModules,
+  getGlobalSearch,
+  getNotifications,
   getRolePermissions,
   updateRolePermissions,
   getAllUsers,

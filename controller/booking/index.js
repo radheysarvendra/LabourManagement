@@ -39,6 +39,11 @@ const getBookingById = async (req,res) => {
 const updateBookingStatus = async (req,res) => {
   try {
     const result = await bookingService.updateBookingStatusService(req.params.id, req.body);
+    if (req.originalUrl?.startsWith("/api/admin/bookings")) {
+      return res.status(result.statusCode).send(
+        result.statusCode >= 400 ? result.body : { success: true, message: "Booking status updated successfully" }
+      );
+    }
     return res.status(result.statusCode).send(result.body);
   } catch (err) {
     return res.status(err.statusCode || 500).send({

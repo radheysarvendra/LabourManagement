@@ -42,6 +42,8 @@ const mapPincodeResponse = (pincodeData) => ({
     branchType: office.branchType,
     deliveryStatus: office.deliveryStatus,
     block: office.block,
+    district: pincodeData.district?.districtName || "",
+    state: pincodeData.district?.state?.stateName || "",
     pincode: pincodeData.pincode,
   })),
 });

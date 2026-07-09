@@ -233,6 +233,52 @@ const getCategorySkillsService = async (categoryId) => {
   return { statusCode: 200, body: { success: true, total: data.skills.length, selectionRules: SELECTION_RULES, data } };
 };
 
+const getCategoriesSummaryService = async () => {
+  await syncSkillCategories();
+
+  const rows = await db.category.findAll({
+    where: { isActive: true },
+    attributes: ["id", "name"],
+    include: [
+      {
+        model: db.categorySkill,
+        as: "categorySkills",
+        where: { isActive: true },
+        required: false,
+        attributes: ["id"],
+        include: [
+          {
+            model: db.skill,
+            as: "skill",
+            where: { isActive: true },
+            required: false,
+            attributes: ["id"],
+          },
+        ],
+      },
+    ],
+    order: [["name", "ASC"]],
+  });
+
+  const data = rows.map((category) => {
+    const json = category.toJSON ? category.toJSON() : category;
+    const categorySkills = Array.isArray(json.categorySkills) ? json.categorySkills : [];
+    const activeSkillIds = new Set(
+      categorySkills
+        .map((item) => item.skill?.id)
+        .filter(Boolean)
+    );
+
+    return {
+      id: json.id,
+      name: json.name,
+      skillCount: activeSkillIds.size,
+    };
+  });
+
+  return { statusCode: 200, body: { success: true, data } };
+};
+
 const addSkillToCategoryService = async (categoryId, payload) => {
   const category = await db.category.findOne({ where: { id: categoryId, isActive: true } });
 
@@ -285,6 +331,7 @@ module.exports = {
   updateCategoryService,
   deleteCategoryService,
   getSkillsService,
+  getCategoriesSummaryService,
   createSkillService,
   updateSkillService,
   deleteSkillService,

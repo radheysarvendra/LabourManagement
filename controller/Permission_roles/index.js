@@ -39,7 +39,11 @@ const getAllRoles = async (req, res) => {
 
     return res.send({
       success: true,
-      data,
+      data: {
+        rows: data,
+        total: data.length,
+        totalPages: 1,
+      },
     });
   } catch (err) {
     return res.status(500).send({

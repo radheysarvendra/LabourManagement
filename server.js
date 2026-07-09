@@ -23,6 +23,7 @@ app.use(express.json());
 // serve uploaded files statically
 const path = require("path");
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/assets", express.static(path.join(__dirname, "public", "assets")));
 
 // Admin panel
 app.get("/admin",           (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
