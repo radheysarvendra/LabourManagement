@@ -263,6 +263,7 @@ router.post(
 
 // ── Labour Verification ───────────────────────────────────────────────────────
 router.post("/api/labour/verification/submit",   verifyToken, labourVerificationController.submitVerification);
+router.post("/api/labour/upload-docs",           verifyToken, labourVerificationController.submitVerification);
 router.get("/api/labour/verification/status",    verifyToken, labourVerificationController.getMyVerificationStatus);
 // Admin
 router.get("/api/admin/labour-verifications",                       verifyAdminToken, labourVerificationController.getVerifications);
