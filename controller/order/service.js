@@ -411,6 +411,11 @@ const getOrdersService = async ({
   orderType,
   bookingFor,
   requestedProviderRole,
+  search,
+  skill,
+  categoryId,
+  district,
+  pincode,
   actorUserId,
   page = 1,
   limit = 20,
@@ -444,6 +449,29 @@ const getOrdersService = async ({
 
   if (resolvedNeedType) {
     where.needType = resolvedNeedType === "contractor" ? "contractor" : "labour";
+  }
+  if (skill) {
+    where.skill = { [Op.iLike]: `%${String(skill).trim()}%` };
+  }
+  if (categoryId) {
+    where.categoryId = Number(categoryId);
+  }
+  if (district) {
+    where.district = { [Op.iLike]: `%${String(district).trim()}%` };
+  }
+  if (pincode) {
+    where.pincode = String(pincode).trim();
+  }
+  if (search) {
+    const q = `%${String(search).trim()}%`;
+    where[Op.or] = [
+      { orderCode: { [Op.iLike]: q } },
+      { ownerName: { [Op.iLike]: q } },
+      { ownerPhone: { [Op.iLike]: q } },
+      { skill: { [Op.iLike]: q } },
+      { district: { [Op.iLike]: q } },
+      { pincode: { [Op.iLike]: q } },
+    ];
   }
 
   // userId or ownerId → same user, check both userId and ownerId columns
@@ -509,11 +537,13 @@ const getOrdersService = async ({
     body: {
       success: true,
       _v: "8d49d6b",
-      total: result.count,
       page: pageNumber,
       limit: pageLimit,
-      totalPages: Math.ceil(result.count / pageLimit),
-      data: result.rows.map((o) => mapOrder(o, userMap)),
+      data: {
+        rows: result.rows.map((o) => mapOrder(o, userMap)),
+        total: result.count,
+        totalPages: Math.ceil(result.count / pageLimit) || 1,
+      },
     },
   };
 };

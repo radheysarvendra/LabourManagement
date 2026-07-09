@@ -12,7 +12,18 @@ const VALID_PERMISSION_ACTIONS = [
   "canUpdate",
   "canDelete",
   "canApprove",
+  "view",
+  "create",
+  "edit",
+  "delete",
 ];
+
+const PERMISSION_ACTION_ALIASES = {
+  view: "canView",
+  create: "canCreate",
+  edit: "canUpdate",
+  delete: "canDelete",
+};
 
 const extractTokenFromHeader = (authHeader) => {
   if (!authHeader) return null;
@@ -56,7 +67,9 @@ const verifyAdminToken = async (req, res, next) => {
 
 const allowAdminModule = (moduleName, action = "canView") => async (req, res, next) => {
   try {
-    if (!VALID_PERMISSION_ACTIONS.includes(action)) {
+    const normalizedAction = PERMISSION_ACTION_ALIASES[action] || action;
+
+    if (!VALID_PERMISSION_ACTIONS.includes(normalizedAction)) {
       return res.status(500).send({
         success: false,
         message: `Invalid permission action ${action}`,
@@ -73,7 +86,7 @@ const allowAdminModule = (moduleName, action = "canView") => async (req, res, ne
       (item) => String(item.moduleName).toLowerCase() === String(moduleName).toLowerCase()
     );
 
-    if (!permission || !permission[action]) {
+    if (!permission || !permission[normalizedAction]) {
       return res.status(403).send({
         success: false,
         message: `No permission for ${moduleName}`,

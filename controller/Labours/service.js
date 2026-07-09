@@ -667,7 +667,11 @@ const searchLaboursService = async ({
         skill: requestedSkill || null,
         verificationStatus: verificationValue || "all",
       },
-      data,
+      data: {
+        rows: data,
+        total: sortedData.length,
+        totalPages: Math.ceil(sortedData.length / pageLimit) || 1,
+      },
     },
   };
 };

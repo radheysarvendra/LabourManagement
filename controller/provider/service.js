@@ -150,6 +150,7 @@ const mapNewContractor = (profile) => {
 
 const searchNewContractors = async ({
   categoryId, skillId, search,
+  status, verificationStatus,
   stateId, districtId, pincodeId, postOfficeId,
   state, district, pincode, postOffice,
   page = 1, limit = 20,
@@ -173,6 +174,15 @@ const searchNewContractors = async ({
       { '$user.phone$': { [Op.iLike]: q } },
       { companyName:    { [Op.iLike]: q } },
     ];
+  }
+  if (verificationStatus) {
+    const normalizedVerification = String(verificationStatus).toLowerCase() === "approved"
+      ? "verified"
+      : String(verificationStatus).toLowerCase();
+    profileWhere.verificationStatus = normalizedVerification;
+  }
+  if (status) {
+    profileWhere.isAvailable = String(status).toLowerCase() === "active" || String(status).toLowerCase() === "available";
   }
 
   const userWhere = hasLocationFilter ? locationWhere : undefined;
@@ -218,6 +228,7 @@ const searchNewContractors = async ({
 
 const searchContractors = async ({
   categoryId, skillId, search,
+  status, verificationStatus,
   stateId, districtId, pincodeId, postOfficeId,
   state, district, pincode, postOffice,
   page = 1, limit = 20,
@@ -231,6 +242,7 @@ const searchContractors = async ({
   try {
     newFlowResult = await searchNewContractors({
       categoryId, skillId, search,
+      status, verificationStatus,
       stateId, districtId, pincodeId, postOfficeId,
       state, district, pincode, postOffice,
       page, limit,
@@ -248,8 +260,20 @@ const searchContractors = async ({
       availableCount: newFlowResult.count,
       page: pageNumber,
       limit: pageLimit,
-      totalPages: Math.ceil(newFlowResult.count / pageLimit),
-      data: newFlowResult.rows.map(mapNewContractor),
+      data: {
+        items: newFlowResult.rows.map(mapNewContractor).map((item) => ({
+          ...item,
+          email: null,
+          category: item.primaryCategoryName,
+          availabilityStatus: item.isAvailable ? "available" : "unavailable",
+        })),
+        pagination: {
+          page: pageNumber,
+          limit: pageLimit,
+          total: newFlowResult.count,
+          totalPages: Math.ceil(newFlowResult.count / pageLimit) || 1,
+        },
+      },
     };
   }
 
@@ -258,7 +282,9 @@ const searchContractors = async ({
   if (categoryId) ownerWhere.categoryId = Number(categoryId);
   if (skillId) ownerWhere.skillId = Number(skillId);
 
-  const userWhere = { isActive: true };
+  const userWhere = {};
+  if (status) userWhere.isActive = String(status).toLowerCase() === "active" || String(status).toLowerCase() === "available";
+  else userWhere.isActive = true;
   if (search) {
     const q = `%${String(search).trim()}%`;
     userWhere[Op.or] = [
@@ -293,8 +319,21 @@ const searchContractors = async ({
     availableCount: result.count,
     page: pageNumber,
     limit: pageLimit,
-    totalPages: Math.ceil(result.count / pageLimit),
-    data: result.rows.map(mapContractor),
+    data: {
+      items: result.rows.map(mapContractor).map((item) => ({
+        ...item,
+        email: null,
+        category: item.categoryName,
+        verificationStatus: "verified",
+        availabilityStatus: item.isAvailable ? "available" : "unavailable",
+      })),
+      pagination: {
+        page: pageNumber,
+        limit: pageLimit,
+        total: result.count,
+        totalPages: Math.ceil(result.count / pageLimit) || 1,
+      },
+    },
   };
 };
 
@@ -311,32 +350,145 @@ const searchProviders = async (payload) => {
     skill: skillName,
     showAll: payload.showAll,
   });
+  const labourRows = Array.isArray(result.body.data)
+    ? result.body.data
+    : result.body.data?.items || result.body.data?.rows || [];
 
   return {
     ...result.body,
     providerType: "labour",
-    availableCount: result.body.total,
-    data: (result.body.data || []).map((item) => ({ ...item, providerType: "labour" })),
+    availableCount: result.body.data?.total || result.body.total || 0,
+    data: {
+      items: labourRows.map((item) => ({ ...item, providerType: "labour" })),
+      pagination: result.body.data?.pagination || {
+        page: Number(payload.page) || 1,
+        limit: Number(payload.limit) || 20,
+        total: result.body.data?.total || result.body.total || 0,
+        totalPages: result.body.data?.totalPages || result.body.totalPages || 1,
+      },
+    },
   };
 };
 
 const countProviders = async (payload) => {
   const result = await searchProviders({ ...payload, page: 1, limit: 1 });
-  const data = result.data || [];
+  const data = Array.isArray(result.data) ? result.data : result.data?.items || result.data?.rows || [];
+  const total = result.data?.pagination?.total || result.data?.total || result.total || result.availableCount || 0;
 
   return {
     success: true,
     providerType: result.providerType,
-    matchedCount: result.total || result.availableCount || 0,
+    matchedCount: total,
     verifiedCount: data.filter((item) => item.isVerified).length,
     unverifiedCount: data.filter((item) => !item.isVerified).length,
   };
 };
 
+const getContractorById = async (id) => {
+  const contractorUserId = Number(id);
+  let profile = await db.contractorProfile.findOne({
+    where: { userId: contractorUserId },
+    include: [
+      { model: User, as: "user", required: false, attributes: ["id", "name", "phone", "age", "gender", "profileImage", "city", "district", "state", "stateId", "districtId", "pincode", "pincodeId", "postOffice", "postOfficeId", "area", "isActive"] },
+      { model: db.contractorSkill, as: "contractorSkills", required: false, include: [{ model: Skill, as: "skill", required: false }] },
+      { model: db.contractorCategory, as: "contractorCategories", required: false, include: [{ model: Category, as: "category", required: false }] },
+    ],
+  });
+
+  if (profile) {
+    return { success: true, data: mapNewContractor(profile) };
+  }
+
+  const owner = await Owner.findOne({
+    where: { id: contractorUserId, registeredFrom: "contractor" },
+    include: [
+      { model: User, as: "user", required: false, attributes: ["id", "name", "phone", "age", "gender", "profileImage", "city", "district", "state", "stateId", "districtId", "pincode", "pincodeId", "postOffice", "postOfficeId", "area", "isActive"] },
+      { model: Skill, as: "skillDetail", required: false },
+      { model: Category, as: "categoryDetail", required: false },
+    ],
+  });
+
+  if (!owner) {
+    const error = new Error("Contractor not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return { success: true, data: mapContractor(owner) };
+};
+
+const updateContractor = async (id, payload) => {
+  const contractorUserId = Number(id);
+  const profile = await db.contractorProfile.findOne({ where: { userId: contractorUserId } });
+
+  if (profile) {
+    const allowedVerification = ["pending", "verified", "rejected"];
+    const requestedVerification = payload.verificationStatus === "approved" ? "verified" : payload.verificationStatus;
+    if (requestedVerification && !allowedVerification.includes(requestedVerification)) {
+      const error = new Error("Invalid verification status");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    await profile.update({
+      companyName: payload.companyName ?? profile.companyName,
+      gstNumber: payload.gstNumber ?? profile.gstNumber,
+      experienceYears: payload.experienceYears ?? profile.experienceYears,
+      isAvailable: payload.isAvailable ?? profile.isAvailable,
+      verificationStatus: requestedVerification || profile.verificationStatus,
+      verifiedByAdminId: payload.verifiedByAdminId ?? profile.verifiedByAdminId,
+      verifiedAt: requestedVerification === "verified" ? new Date() : profile.verifiedAt,
+    });
+
+    const userUpdate = {};
+    ["name", "phone", "age", "gender", "profileImage", "city", "district", "state", "stateId", "districtId", "pincode", "pincodeId", "postOffice", "postOfficeId", "area"].forEach((key) => {
+      if (payload[key] !== undefined) userUpdate[key] = payload[key];
+    });
+    if (payload.isActive !== undefined) userUpdate.isActive = payload.isActive;
+    if (Object.keys(userUpdate).length > 0) {
+      await User.update(userUpdate, { where: { id: contractorUserId } });
+    }
+
+    return getContractorById(contractorUserId);
+  }
+
+  const owner = await Owner.findOne({ where: { id: contractorUserId, registeredFrom: "contractor" } });
+  if (!owner) {
+    const error = new Error("Contractor not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  await owner.update({
+    workType: payload.workType ?? owner.workType,
+    categoryId: payload.categoryId ?? owner.categoryId,
+    skillId: payload.skillId ?? owner.skillId,
+  });
+
+  const userUpdate = {};
+  ["name", "phone", "age", "gender", "profileImage", "city", "district", "state", "stateId", "districtId", "pincode", "pincodeId", "postOffice", "postOfficeId", "area"].forEach((key) => {
+    if (payload[key] !== undefined) userUpdate[key] = payload[key];
+  });
+  if (payload.isActive !== undefined) userUpdate.isActive = payload.isActive;
+  if (Object.keys(userUpdate).length > 0 && owner.userId) {
+    await User.update(userUpdate, { where: { id: owner.userId } });
+  }
+
+  return getContractorById(contractorUserId);
+};
+
+const updateContractorVerification = async (id, verificationStatus, adminId) => (
+  updateContractor(id, { verificationStatus, verifiedByAdminId: adminId })
+);
+
+const updateContractorAvailability = async (id, isAvailable) => (
+  updateContractor(id, { isAvailable })
+);
+
 const ensureProviderAvailable = async (payload) => {
   const providerType = normalizeProviderType(payload.providerType || payload.needType || payload.orderType || payload.bookingFor);
   const result = await searchProviders({ ...payload, providerType, page: 1, limit: 1 });
-  const matchedCount = result.total || result.availableCount || 0;
+  const matchedCount = result.data?.pagination?.total || result.data?.total || result.total || result.availableCount || 0;
 
   if (matchedCount < 1) {
     const message = providerType === "contractor"
@@ -352,6 +504,10 @@ const ensureProviderAvailable = async (payload) => {
 module.exports = {
   searchProviders,
   countProviders,
+  getContractorById,
+  updateContractor,
+  updateContractorVerification,
+  updateContractorAvailability,
   ensureProviderAvailable,
   normalizeProviderType,
 };

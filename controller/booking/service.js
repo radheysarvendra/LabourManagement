@@ -179,7 +179,8 @@ const createBookingService = async (payload) => {
   };
 };
 
-const getBookingsService = async ({ ownerId, labourId, status, page = 1, limit = 20 }) => {
+const getBookingsService = async ({ ownerId, labourId, status, search, skill, district, pincode, page = 1, limit = 20 }) => {
+  const { Op } = db.Sequelize;
   const pageNumber = Math.max(Number(page) || 1, 1);
   const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
   const offset = (pageNumber - 1) * pageLimit;
@@ -192,6 +193,26 @@ const getBookingsService = async ({ ownerId, labourId, status, page = 1, limit =
 
   if (status) {
     where.status = status;
+  }
+  if (skill) {
+    where.skill = { [Op.iLike]: `%${String(skill).trim()}%` };
+  }
+  if (district) {
+    where.district = { [Op.iLike]: `%${String(district).trim()}%` };
+  }
+  if (pincode) {
+    where.pincode = String(pincode).trim();
+  }
+  if (search) {
+    const q = `%${String(search).trim()}%`;
+    where[Op.or] = [
+      { bookingCode: { [Op.iLike]: q } },
+      { ownerName: { [Op.iLike]: q } },
+      { ownerPhone: { [Op.iLike]: q } },
+      { skill: { [Op.iLike]: q } },
+      { district: { [Op.iLike]: q } },
+      { pincode: { [Op.iLike]: q } },
+    ];
   }
 
   if (labourId) {
@@ -215,11 +236,22 @@ const getBookingsService = async ({ ownerId, labourId, status, page = 1, limit =
     statusCode: 200,
     body: {
       success: true,
-      total: result.count,
-      page: pageNumber,
-      limit: pageLimit,
-      totalPages: Math.ceil(result.count / pageLimit),
-      data: result.rows.map(mapBooking),
+      data: {
+        items: result.rows.map(mapBooking).map((item) => ({
+          ...item,
+          labourName: item.allocatedLabours?.[0]?.labour?.user?.name || null,
+          labourPhone: item.allocatedLabours?.[0]?.labour?.user?.phone || null,
+          location: [item.district, item.state].filter(Boolean).join(", "),
+          bookingDate: item.requiredDate || item.createdAt,
+          assignedLabourCount: item.allocatedCount || item.allocatedLabours?.length || 0,
+        })),
+        pagination: {
+          page: pageNumber,
+          limit: pageLimit,
+          total: result.count,
+          totalPages: Math.ceil(result.count / pageLimit) || 1,
+        },
+      },
     },
   };
 };
@@ -241,9 +273,17 @@ const getBookingByIdService = async (id) => {
 };
 
 const updateBookingStatusService = async (id, { status }) => {
+  const statusMap = {
+    approved: "confirmed",
+    assigned: "confirmed",
+    in_progress: "confirmed",
+    rejected: "cancelled",
+  };
+  const requestedStatus = String(status || "").toLowerCase();
+  const dbStatus = statusMap[requestedStatus] || requestedStatus;
   const allowedStatus = ["pending", "confirmed", "cancelled", "completed"];
 
-  if (!allowedStatus.includes(status)) {
+  if (!allowedStatus.includes(dbStatus)) {
     return {
       statusCode: 400,
       body: { success: false, message: "Invalid booking status" },
@@ -259,7 +299,7 @@ const updateBookingStatusService = async (id, { status }) => {
     };
   }
 
-  await booking.update({ status });
+  await booking.update({ status: dbStatus });
 
   return getBookingByIdService(id);
 };

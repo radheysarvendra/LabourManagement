@@ -27,6 +27,27 @@ const ADMIN_MODULES = {
   SETTINGS: "settings",
 };
 
+const ADMIN_MODULE_DETAILS = [
+  { key: ADMIN_MODULES.DASHBOARD, label: "Dashboard", group: "General" },
+  { key: ADMIN_MODULES.ADMINS, label: "Admins", group: "General" },
+  { key: ADMIN_MODULES.ROLES, label: "Roles", group: "General" },
+  { key: ADMIN_MODULES.PERMISSIONS, label: "Permissions", group: "General" },
+  { key: ADMIN_MODULES.USERS, label: "Users", group: "Master" },
+  { key: ADMIN_MODULES.LABOURS, label: "Labourers", group: "Master" },
+  { key: ADMIN_MODULES.OWNERS, label: "Owners", group: "Master" },
+  { key: ADMIN_MODULES.CONTRACTORS, label: "Contractors", group: "Master" },
+  { key: ADMIN_MODULES.CATEGORIES, label: "Categories", group: "Master" },
+  { key: ADMIN_MODULES.SKILLS, label: "Skills", group: "Master" },
+  { key: ADMIN_MODULES.LOCATIONS, label: "Locations", group: "Master" },
+  { key: ADMIN_MODULES.BOOKINGS, label: "Bookings", group: "Operations" },
+  { key: ADMIN_MODULES.ORDERS, label: "Orders", group: "Operations" },
+  { key: ADMIN_MODULES.WORK_ASSIGNMENTS, label: "Work Assignments", group: "Operations" },
+  { key: ADMIN_MODULES.ATTENDANCE, label: "Attendance", group: "Operations" },
+  { key: ADMIN_MODULES.PAYMENTS, label: "Payments", group: "Operations" },
+  { key: ADMIN_MODULES.REPORTS, label: "Reports", group: "Insights" },
+  { key: ADMIN_MODULES.SETTINGS, label: "Settings", group: "System" },
+];
+
 const DEFAULT_ADMIN_ROLES = [
   { name: "super_admin", description: "Full admin dashboard access" },
   { name: "admin", description: "Admin dashboard access" },
@@ -153,6 +174,7 @@ const getDefaultPermissionsForRole = (roleName) =>
 module.exports = {
   ADMIN_ACTIONS,
   ADMIN_MODULES,
+  ADMIN_MODULE_DETAILS,
   DEFAULT_ADMIN_ROLES,
   DEFAULT_ROLE_PERMISSIONS,
   getDefaultPermissionsForRole,

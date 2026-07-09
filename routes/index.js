@@ -356,14 +356,23 @@ router.post("/auth/logout", verifyToken, authController.logout);
 // Admin dashboard routes
 router.post("/api/admin/auth/login", adminController.loginAdmin);
 router.get("/api/admin/profile", verifyAdminToken, adminController.getAdminProfile);
+router.get("/api/admin/me", verifyAdminToken, adminController.getMe);
+router.get("/api/admin/me/permissions", verifyAdminToken, adminController.getMePermissions);
+router.get("/api/admin/overview/stats", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getOverviewStats);
+router.get("/api/admin/activity/recent", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getRecentActivity);
+router.get("/api/admin/search", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getGlobalSearch);
+router.get("/api/admin/notifications", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getNotifications);
 router.get("/api/admin/dashboard/stats", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getDashboardStats);
+router.get("/api/admin/dashboard/summary", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getDashboardSummary);
 router.get("/api/admin/dashboard/order-strength", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getOrderStrength);
 router.get("/api/admin/dashboard/staff-strength", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getStaffStrength);
+router.get("/api/admin/dashboard/state-wise-staff", verifyAdminToken, allowAdminModule("dashboard", "canView"), adminController.getStateWiseStaff);
 router.post("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canCreate"), adminController.createAdmin);
 router.get("/api/admin/admins", verifyAdminToken, allowAdminModule("admins", "canView"), adminController.getAdmins);
 router.get("/api/admin/users", verifyAdminToken, allowAdminModule("users", "canView"), adminController.getAllUsers);
 router.post("/api/admin/permissions", verifyAdminToken, allowAdminModule("permissions", "canCreate"), adminController.createPermission);
 router.get("/api/admin/permissions/matrix", verifyAdminToken, allowAdminModule("permissions", "canView"), adminController.getPermissionMatrix);
+router.get("/api/admin/roles/modules", verifyAdminToken, allowAdminModule("roles", "canView"), adminController.getRoleModules);
 router.get("/api/admin/roles/:roleId/permissions", verifyAdminToken, allowAdminModule("roles", "canView"), adminController.getRolePermissions);
 router.put("/api/admin/roles/:roleId/permissions", verifyAdminToken, allowAdminModule("roles", "canUpdate"), adminController.updateRolePermissions);
 router.post("/api/admin/roles", verifyAdminToken, allowAdminModule("roles", "canCreate"), roleController.createRole);
@@ -371,6 +380,7 @@ router.get("/api/admin/roles", verifyAdminToken, allowAdminModule("roles", "canV
 router.get("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canView"), roleController.getRoleById);
 router.put("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canUpdate"), roleController.updateRoleById);
 router.delete("/api/admin/roles/:id", verifyAdminToken, allowAdminModule("roles", "canDelete"), roleController.deleteRoleById);
+router.get("/api/admin/skills/categories-summary", verifyAdminToken, allowAdminModule("skills", "canView"), categoryController.getCategoriesSummary);
 router.get("/api/admin/labours", verifyAdminToken, allowAdminModule("labours", "canView"), labourController.adminSearchLabours);
 router.get("/api/admin/labours/:id", verifyAdminToken, allowAdminModule("labours", "canView"), labourController.getLabourById);
 router.post("/api/admin/labours", verifyAdminToken, allowAdminModule("labours", "canCreate"), labourController.createLabour);
@@ -379,11 +389,34 @@ router.get("/api/admin/owners", verifyAdminToken, allowAdminModule("owners", "ca
 router.get("/api/admin/owners/:id", verifyAdminToken, allowAdminModule("owners", "canView"), ownerController.getOwnerById);
 router.post("/api/admin/owners", verifyAdminToken, allowAdminModule("owners", "canCreate"), ownerController.createOwner);
 router.put("/api/admin/owners/:id", verifyAdminToken, allowAdminModule("owners", "canUpdate"), ownerController.updateOwner);
+router.patch("/api/admin/owners/:id", verifyAdminToken, allowAdminModule("owners", "canUpdate"), ownerController.updateOwner);
+router.patch("/api/admin/owners/:id/status", verifyAdminToken, allowAdminModule("owners", "canUpdate"), ownerController.updateOwner);
+router.put("/api/admin/owners/:id/activate", verifyAdminToken, allowAdminModule("owners", "canUpdate"), (req, res) => {
+  req.body.isActive = true;
+  return ownerController.updateOwner(req, res);
+});
+router.put("/api/admin/owners/:id/deactivate", verifyAdminToken, allowAdminModule("owners", "canUpdate"), (req, res) => {
+  req.body.isActive = false;
+  return ownerController.updateOwner(req, res);
+});
 router.delete("/api/admin/owners/:id", verifyAdminToken, allowAdminModule("owners", "canDelete"), ownerController.deleteOwner);
+router.get("/api/admin/contractors", verifyAdminToken, allowAdminModule("contractors", "canView"), providerController.listContractors);
+router.get("/api/admin/contractors/:id", verifyAdminToken, allowAdminModule("contractors", "canView"), providerController.getContractorById);
+router.put("/api/admin/contractors/:id", verifyAdminToken, allowAdminModule("contractors", "canUpdate"), providerController.updateContractor);
+router.patch("/api/admin/contractors/:id", verifyAdminToken, allowAdminModule("contractors", "canUpdate"), providerController.updateContractor);
+router.patch("/api/admin/contractors/:id/verification", verifyAdminToken, allowAdminModule("contractors", "canApprove"), (req, res) => {
+  const status = req.body.verificationStatus === "approved" ? "verified" : req.body.verificationStatus;
+  req.body.verificationStatus = status;
+  return providerController.updateContractor(req, res);
+});
+router.put("/api/admin/contractors/:id/approve", verifyAdminToken, allowAdminModule("contractors", "canApprove"), providerController.approveContractor);
+router.put("/api/admin/contractors/:id/reject", verifyAdminToken, allowAdminModule("contractors", "canApprove"), providerController.rejectContractor);
+router.put("/api/admin/contractors/:id/availability", verifyAdminToken, allowAdminModule("contractors", "canUpdate"), providerController.updateContractorAvailability);
 router.get("/api/admin/bookings", verifyAdminToken, allowAdminModule("bookings", "canView"), bookingController.getBookings);
 router.get("/api/admin/bookings/:id", verifyAdminToken, allowAdminModule("bookings", "canView"), bookingController.getBookingById);
 router.post("/api/admin/bookings", verifyAdminToken, allowAdminModule("bookings", "canCreate"), bookingController.createBooking);
 router.put("/api/admin/bookings/:id/status", verifyAdminToken, allowAdminModule("bookings", "canUpdate"), bookingController.updateBookingStatus);
+router.patch("/api/admin/bookings/:id/status", verifyAdminToken, allowAdminModule("bookings", "canUpdate"), bookingController.updateBookingStatus);
 router.put("/api/admin/booking-allocations/:id/status", verifyAdminToken, allowAdminModule("bookings", "canUpdate"), bookingController.updateAllocationStatus);
 router.get("/api/admin/orders", verifyAdminToken, allowAdminModule("orders", "canView"), orderController.getOrders);
 router.get("/api/admin/orders/:id", verifyAdminToken, allowAdminModule("orders", "canView"), orderController.getOrderById);
@@ -395,6 +428,7 @@ router.get("/api/admin/work-assignments", verifyAdminToken, allowAdminModule("wo
 router.get("/api/admin/work-assignments/:id", verifyAdminToken, allowAdminModule("work_assignments", "canView"), workAssignmentController.getWorkAssignmentById);
 router.post("/api/admin/work-assignments", verifyAdminToken, allowAdminModule("work_assignments", "canCreate"), workAssignmentController.createWorkAssignment);
 router.put("/api/admin/work-assignments/:id", verifyAdminToken, allowAdminModule("work_assignments", "canUpdate"), workAssignmentController.updateWorkAssignment);
+router.patch("/api/admin/work-assignments/:id", verifyAdminToken, allowAdminModule("work_assignments", "canUpdate"), workAssignmentController.updateWorkAssignment);
 router.delete("/api/admin/work-assignments/:id", verifyAdminToken, allowAdminModule("work_assignments", "canDelete"), workAssignmentController.deleteWorkAssignment);
 router.post("/api/admin/orders/:orderId/work-assignment", verifyAdminToken, allowAdminModule("work_assignments", "canCreate"), workAssignmentController.createAssignmentFromOrder);
 router.post("/api/admin/work-assignments/:id/labours", verifyAdminToken, allowAdminModule("work_assignments", "canUpdate"), workAssignmentController.addLabourToAssignment);
@@ -404,9 +438,11 @@ router.delete("/api/admin/work-assignments/:id/labours/:labourId", verifyAdminTo
 router.post("/api/admin/work-assignments/:id/attendance", verifyAdminToken, allowAdminModule("attendance", "canCreate"), workAssignmentController.markAttendance);
 router.get("/api/admin/work-assignments/:id/attendance", verifyAdminToken, allowAdminModule("attendance", "canView"), workAssignmentController.getAttendance);
 router.put("/api/admin/work-assignments/:id/attendance/:attendanceId", verifyAdminToken, allowAdminModule("attendance", "canUpdate"), workAssignmentController.updateAttendance);
+router.patch("/api/admin/work-assignments/:id/attendance", verifyAdminToken, allowAdminModule("attendance", "canUpdate"), workAssignmentController.updateAssignmentAttendanceStatus);
 router.post("/api/admin/work-assignments/:id/payments/generate", verifyAdminToken, allowAdminModule("payments", "canCreate"), workAssignmentController.generatePayment);
 router.get("/api/admin/work-assignments/:id/payments", verifyAdminToken, allowAdminModule("payments", "canView"), workAssignmentController.getPayments);
 router.put("/api/admin/work-assignments/:id/payments/:paymentId/status", verifyAdminToken, allowAdminModule("payments", "canUpdate"), workAssignmentController.updatePaymentStatus);
+router.patch("/api/admin/work-assignments/:id/payment-status", verifyAdminToken, allowAdminModule("payments", "canUpdate"), workAssignmentController.updateAssignmentPaymentStatus);
 // Role routes
 router.post("/CreateRole", verifyAdminToken, allowAdminModule("roles", "canCreate"), roleController.createRole);
 router.get("/GetAllRoles", verifyAdminToken, allowAdminModule("roles", "canView"), roleController.getAllRoles);

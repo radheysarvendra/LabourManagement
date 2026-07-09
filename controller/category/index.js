@@ -81,6 +81,15 @@ const getCategorySkills = async (req,res) => {
   }
 };
 
+const getCategoriesSummary = async (_req,res) => {
+  try {
+    const result = await categoryService.getCategoriesSummaryService();
+    return res.status(result.statusCode).send(result.body);
+  } catch (err) {
+    return res.status(err.statusCode || 500).send({ success: false, message: err.message });
+  }
+};
+
 const addSkillToCategory = async (req,res) => {
   try {
     const result = await categoryService.addSkillToCategoryService(req.params.categoryId, req.body);
@@ -105,6 +114,7 @@ module.exports = {
   updateCategory,
   deleteCategory,
   getSkills,
+  getCategoriesSummary,
   createSkill,
   updateSkill,
   deleteSkill,
