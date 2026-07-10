@@ -339,6 +339,8 @@ router.delete("/api/admin/ratings/:id", verifyAdminToken, ratingController.delet
 
 router.post("/createLabour", verifyAdminToken, labourController.createLabour);
 router.get("/searchLabour", verifyToken, labourController.searchLabours);
+router.post("/api/labours/filter", verifyToken, labourController.filterLabours);
+router.get("/api/labours/filter", verifyToken, labourController.filterLabours);
 router.get("/getAllLabour", verifyToken, labourController.getAllLabours);
 router.get("/getLabourById/:id",verifyToken, labourController.getLabourById);
 router.put("/updateLabourById/:id", verifyToken, labourController.updateLabourById);
