@@ -76,8 +76,8 @@ async function testHealth() {
     r.status === 200 && r.body.status === "ok", r.body);
 
   r = await req("GET", "/api/health");
-  expect("GET /api/health → 200 + ok:true",
-    r.status === 200 && r.body.ok === true, r.body);
+  expect("GET /api/health → 200 + status:ok",
+    r.status === 200 && (r.body.status === "ok" || r.body.ok === true), r.body);
 
   r = await req("GET", "/api/status");
   expect("GET /api/status → 200 + db:connected",

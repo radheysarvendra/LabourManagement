@@ -14,6 +14,7 @@ const TOKEN_SECRET = config.SECRET_KEY;
 const DEFAULT_TEST_OTP = process.env.DEFAULT_TEST_OTP || "1234";
 const OTP_EXPIRY_MINUTES = Number(process.env.OTP_EXPIRY_MINUTES || 10);
 const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || "";
+const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 12);
 // Show OTP in response only when not using real SMS (no key = test mode)
 const EXPOSE_TEST_OTP = process.env.EXPOSE_TEST_OTP === "true" || !FAST2SMS_API_KEY;
 const DEFAULT_PASSWORD = process.env.DEFAULT_LOGIN_PASSWORD || "1234";
@@ -84,7 +85,7 @@ const generateToken = (user, userType) => {
       contractorId: CONTRACTOR_LIKE_ROLES.includes(type) ? user.id : null,
     },
     TOKEN_SECRET,
-    { expiresIn: "7d" }
+    { expiresIn: `${SESSION_TTL_DAYS}d` }
   );
 };
 
@@ -107,7 +108,7 @@ const saveToken = async (user, token, userType) => {
     userType,
     type: "Primary",
     companyCode: user.companyCode || null,
-    expiry: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    expiry: new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000),
   });
 };
 
@@ -127,12 +128,12 @@ const generateSession = async (userId, roleCode) => {
   if (!userRole) throw new Error(`Role ${roleCode} is unavailable or incomplete`);
 
   const sessionId = uuidv4();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   const token = jwt.sign(
     { sessionId, userId, activeRole: roleCode },
     TOKEN_SECRET,
-    { expiresIn: "7d" }
+    { expiresIn: `${SESSION_TTL_DAYS}d` }
   );
 
   const tokenHash = hashToken(token);

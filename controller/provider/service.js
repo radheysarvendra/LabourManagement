@@ -6,6 +6,12 @@ const Owner = db.owner;
 const User = db.user;
 const Skill = db.skill;
 const Category = db.category;
+const State = db.state;
+const District = db.district;
+const Pincode = db.pincode;
+const PostOffice = db.postOffice;
+const Labour = db.labour;
+const LabourSkill = db.labourSkill;
 
 const normalizeProviderType = (value) => (
   String(value || "").toLowerCase() === "contractor" ? "contractor" : "labour"
@@ -17,6 +23,8 @@ const getSkillName = async (skillId, skill) => {
   const skillData = await Skill.findOne({ where: { id: skillId } });
   return skillData?.skillName || "";
 };
+
+const normalizeText = (value) => String(value || "").trim().toLowerCase();
 
 const buildUserLocationWhere = ({ stateId, districtId, pincodeId, postOfficeId, state, district, pincode, postOffice }) => {
   const filters = [];
@@ -253,20 +261,26 @@ const searchContractors = async ({
 
   // If new flow returned results, return them
   if (newFlowResult && newFlowResult.count > 0) {
+    const items = newFlowResult.rows.map(mapNewContractor).map((item) => ({
+      ...item,
+      email: null,
+      category: item.primaryCategoryName,
+      availabilityStatus: item.isAvailable ? "available" : "unavailable",
+    }));
     return {
       success: true,
       providerType: "contractor",
       total: newFlowResult.count,
+      count: newFlowResult.count,
       availableCount: newFlowResult.count,
+      matchedCount: newFlowResult.count,
       page: pageNumber,
       limit: pageLimit,
       data: {
-        items: newFlowResult.rows.map(mapNewContractor).map((item) => ({
-          ...item,
-          email: null,
-          category: item.primaryCategoryName,
-          availabilityStatus: item.isAvailable ? "available" : "unavailable",
-        })),
+        items,
+        labours: items,
+        labour: items,
+        workers: items,
         pagination: {
           page: pageNumber,
           limit: pageLimit,
@@ -316,7 +330,9 @@ const searchContractors = async ({
     success: true,
     providerType: "contractor",
     total: result.count,
+    count: result.count,
     availableCount: result.count,
+    matchedCount: result.count,
     page: pageNumber,
     limit: pageLimit,
     data: {
@@ -327,6 +343,9 @@ const searchContractors = async ({
         verificationStatus: "verified",
         availabilityStatus: item.isAvailable ? "available" : "unavailable",
       })),
+      labours: result.rows.map(mapContractor),
+      labour: result.rows.map(mapContractor),
+      workers: result.rows.map(mapContractor),
       pagination: {
         page: pageNumber,
         limit: pageLimit,
@@ -353,19 +372,30 @@ const searchProviders = async (payload) => {
   const labourRows = Array.isArray(result.body.data)
     ? result.body.data
     : result.body.data?.items || result.body.data?.rows || [];
+  const labourPagination = result.body.data?.pagination || {
+    page: Number(payload.page) || 1,
+    limit: Number(payload.limit) || 20,
+    total: result.body.data?.total || result.body.total || 0,
+    totalPages: result.body.data?.totalPages || result.body.totalPages || 1,
+  };
+  const total = Number(result.body.data?.total ?? result.body.total ?? labourRows.length ?? 0);
 
   return {
     ...result.body,
     providerType: "labour",
-    availableCount: result.body.data?.total || result.body.total || 0,
+    total,
+    count: total,
+    availableCount: total,
+    matchedCount: total,
+    labours: labourRows.map((item) => ({ ...item, providerType: "labour" })),
+    labour: labourRows.map((item) => ({ ...item, providerType: "labour" })),
+    workers: labourRows.map((item) => ({ ...item, providerType: "labour" })),
     data: {
       items: labourRows.map((item) => ({ ...item, providerType: "labour" })),
-      pagination: result.body.data?.pagination || {
-        page: Number(payload.page) || 1,
-        limit: Number(payload.limit) || 20,
-        total: result.body.data?.total || result.body.total || 0,
-        totalPages: result.body.data?.totalPages || result.body.totalPages || 1,
-      },
+      labours: labourRows.map((item) => ({ ...item, providerType: "labour" })),
+      labour: labourRows.map((item) => ({ ...item, providerType: "labour" })),
+      workers: labourRows.map((item) => ({ ...item, providerType: "labour" })),
+      pagination: labourPagination,
     },
   };
 };
@@ -501,6 +531,210 @@ const ensureProviderAvailable = async (payload) => {
   return { ok: true, providerType, matchedCount };
 };
 
+const normalizeSearchText = (value) => String(value || "").trim().toLowerCase();
+
+const getSkillWhere = (payload) => {
+  if (payload.skillId) {
+    return { id: Number(payload.skillId) };
+  }
+  if (payload.skill) {
+    return { skillName: { [Op.iLike]: `%${String(payload.skill).trim()}%` } };
+  }
+  return null;
+};
+
+const resolveLocationChain = async (payload) => {
+  const result = {
+    state: null,
+    district: null,
+    pincode: null,
+    postOffice: null,
+    stateId: payload.stateId ? Number(payload.stateId) : null,
+    districtId: payload.districtId ? Number(payload.districtId) : null,
+    pincodeId: payload.pincodeId ? Number(payload.pincodeId) : null,
+    postOfficeId: payload.postOfficeId ? Number(payload.postOfficeId) : null,
+  };
+
+  const mismatches = [];
+
+  if (result.stateId) {
+    const stateRow = await State.findByPk(result.stateId);
+    result.state = stateRow?.stateName || null;
+    if (payload.state && normalizeText(payload.state) !== normalizeText(result.state)) {
+      mismatches.push("state does not match stateId");
+    }
+  } else if (payload.state) {
+    const stateRow = await State.findOne({ where: { stateName: { [Op.iLike]: String(payload.state).trim() } } });
+    result.state = stateRow?.stateName || String(payload.state).trim() || null;
+    result.stateId = stateRow?.id || result.stateId;
+  }
+
+  if (result.districtId) {
+    const districtRow = await District.findByPk(result.districtId);
+    result.district = districtRow?.districtName || null;
+    result.stateId = districtRow?.stateId || result.stateId;
+    if (payload.district && normalizeText(payload.district) !== normalizeText(result.district)) {
+      mismatches.push("district does not match districtId");
+    }
+  } else if (payload.district) {
+    const districtRow = await District.findOne({
+      where: { districtName: { [Op.iLike]: String(payload.district).trim() } },
+      include: [{ model: State, as: "state" }],
+    });
+    result.district = districtRow?.districtName || String(payload.district).trim() || null;
+    result.districtId = districtRow?.id || result.districtId;
+    result.stateId = districtRow?.stateId || districtRow?.state?.id || result.stateId;
+    result.state = districtRow?.state?.stateName || result.state;
+  }
+
+  if (result.pincodeId) {
+    const pincodeRow = await Pincode.findByPk(result.pincodeId, {
+      include: [
+        { model: District, as: "district", include: [{ model: State, as: "state" }] },
+        { model: PostOffice, as: "postOffices" },
+      ],
+    });
+    result.pincode = pincodeRow?.pincode || null;
+    result.districtId = pincodeRow?.districtId || result.districtId;
+    result.district = pincodeRow?.district?.districtName || result.district;
+    result.stateId = pincodeRow?.district?.stateId || result.stateId;
+    result.state = pincodeRow?.district?.state?.stateName || result.state;
+    result.postOffice = (pincodeRow?.postOffices || []).map((office) => office.postOfficeName);
+    if (payload.pincode && normalizeText(payload.pincode) !== normalizeText(result.pincode)) {
+      mismatches.push("pincode does not match pincodeId");
+    }
+    if (result.districtId && pincodeRow?.districtId && Number(result.districtId) !== Number(pincodeRow.districtId)) {
+      mismatches.push("pincode does not belong to district");
+    }
+  } else if (payload.pincode) {
+    const pincodeRow = await Pincode.findOne({
+      where: { pincode: String(payload.pincode).trim() },
+      include: [
+        { model: District, as: "district", include: [{ model: State, as: "state" }] },
+        { model: PostOffice, as: "postOffices" },
+      ],
+    });
+    result.pincode = pincodeRow?.pincode || String(payload.pincode).trim() || null;
+    result.pincodeId = pincodeRow?.id || result.pincodeId;
+    result.districtId = pincodeRow?.districtId || result.districtId;
+    result.district = pincodeRow?.district?.districtName || result.district;
+    result.stateId = pincodeRow?.district?.stateId || result.stateId;
+    result.state = pincodeRow?.district?.state?.stateName || result.state;
+    result.postOffice = (pincodeRow?.postOffices || []).map((office) => office.postOfficeName);
+  }
+
+  if (result.postOfficeId) {
+    const officeRow = await PostOffice.findByPk(result.postOfficeId);
+    result.postOffice = officeRow?.postOfficeName || null;
+    result.pincodeId = officeRow?.pincodeId || result.pincodeId;
+    if (payload.postOffice && normalizeText(payload.postOffice) !== normalizeText(result.postOffice)) {
+      mismatches.push("postOffice does not match postOfficeId");
+    }
+  } else if (payload.postOffice && result.pincodeId) {
+    const officeRow = await PostOffice.findOne({
+      where: {
+        pincodeId: result.pincodeId,
+        postOfficeName: { [Op.iLike]: String(payload.postOffice).trim() },
+      },
+    });
+    result.postOffice = officeRow?.postOfficeName || String(payload.postOffice).trim() || null;
+    result.postOfficeId = officeRow?.id || result.postOfficeId;
+  }
+
+  if (result.postOfficeId && result.pincodeId) {
+    const officeRow = await PostOffice.findByPk(result.postOfficeId);
+    if (officeRow && Number(officeRow.pincodeId) !== Number(result.pincodeId)) {
+      mismatches.push("postOffice does not belong to pincode");
+    }
+  }
+
+  return { ...result, mismatches };
+};
+
+const getLabourLocationSkillMatch = async (payload) => {
+  const location = await resolveLocationChain(payload);
+  const skillWhere = getSkillWhere(payload);
+
+  if (!skillWhere) {
+    const error = new Error("skill or skillId is required");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (location.mismatches?.length) {
+    const error = new Error("location data does not match");
+    error.statusCode = 400;
+    error.details = location.mismatches;
+    throw error;
+  }
+
+  const skill = await Skill.findOne({ where: skillWhere });
+  if (!skill) {
+    const error = new Error("Skill not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const userWhere = {};
+  if (location.stateId) userWhere.stateId = location.stateId;
+  if (location.districtId) userWhere.districtId = location.districtId;
+  if (location.pincodeId) userWhere.pincodeId = location.pincodeId;
+  if (location.postOfficeId) userWhere.postOfficeId = location.postOfficeId;
+
+  const where = {};
+  if (String(payload.isAvailable).toLowerCase() === "true") where.isAvailable = true;
+  if (String(payload.isVerified).toLowerCase() === "true") where.isVerified = true;
+
+  const count = await Labour.count({
+    where,
+    include: [
+      {
+        model: db.user,
+        as: "user",
+        required: Object.keys(userWhere).length > 0,
+        where: Object.keys(userWhere).length > 0 ? userWhere : undefined,
+        attributes: [],
+      },
+      {
+        model: LabourSkill,
+        as: "labourSkills",
+        required: true,
+        where: { skillId: skill.id },
+        attributes: [],
+      },
+    ],
+    distinct: true,
+    col: "id",
+  });
+
+  const totalLabourCount = await Labour.count({
+    include: [
+      {
+        model: db.user,
+        as: "user",
+        required: Object.keys(userWhere).length > 0,
+        where: Object.keys(userWhere).length > 0 ? userWhere : undefined,
+        attributes: [],
+      },
+    ],
+    distinct: true,
+    col: "id",
+  });
+
+  return {
+    statusCode: 200,
+    body: {
+      success: true,
+      providerType: "labour",
+      data: {
+        totalLabourCount,
+        labourCount: count,
+        matchedCount: count,
+      },
+    },
+  };
+};
+
 module.exports = {
   searchProviders,
   countProviders,
@@ -510,4 +744,5 @@ module.exports = {
   updateContractorAvailability,
   ensureProviderAvailable,
   normalizeProviderType,
+  getLabourLocationSkillMatch,
 };

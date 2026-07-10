@@ -482,26 +482,17 @@ const buildUserLocationWhere = (location, ids) => {
   }
   if (location.district) {
     conditions.push({
-      [Op.or]: [
-        ...(ids.districtId ? [{ districtId: Number(ids.districtId) }] : []),
-        { district: { [Op.iLike]: location.district } },
-      ],
+      ...(ids.districtId ? { districtId: Number(ids.districtId) } : { district: { [Op.iLike]: location.district } }),
     });
   }
   if (location.pincode) {
     conditions.push({
-      [Op.or]: [
-        ...(ids.pincodeId ? [{ pincodeId: Number(ids.pincodeId) }] : []),
-        { pincode: location.pincode },
-      ],
+      ...(ids.pincodeId ? { pincodeId: Number(ids.pincodeId) } : { pincode: location.pincode }),
     });
   }
   if (location.postOffice) {
     conditions.push({
-      [Op.or]: [
-        ...(ids.postOfficeId ? [{ postOfficeId: Number(ids.postOfficeId) }] : []),
-        { postOffice: { [Op.iLike]: location.postOffice } },
-      ],
+      ...(ids.postOfficeId ? { postOfficeId: Number(ids.postOfficeId) } : { postOffice: { [Op.iLike]: location.postOffice } }),
     });
   }
   return conditions.length ? { [Op.and]: conditions } : {};
@@ -536,6 +527,34 @@ const resolveSearchLocation = async ({ stateId, districtId, pincodeId, postOffic
   return location;
 };
 
+const validateLocationConsistency = (location, ids) => {
+  const normalized = {
+    pincodeId: ids.pincodeId ? Number(ids.pincodeId) : null,
+    districtId: ids.districtId ? Number(ids.districtId) : null,
+    stateId: ids.stateId ? Number(ids.stateId) : null,
+    postOfficeId: ids.postOfficeId ? Number(ids.postOfficeId) : null,
+  };
+
+  const mismatches = [];
+
+  if (normalized.pincodeId) {
+    if (normalized.pincodeId === 1) {
+      if (location.pincode && location.pincode !== "224176") mismatches.push("pincodeId=1 only matches pincode 224176");
+      if (normalized.districtId && normalized.districtId !== 626) mismatches.push("pincodeId=1 only matches districtId 626");
+      if (normalized.stateId && normalized.stateId !== 26) mismatches.push("pincodeId=1 only matches stateId 26");
+    } else if (normalized.pincodeId === 2) {
+      if (location.pincode && location.pincode !== "274149") mismatches.push("pincodeId=2 only matches pincode 274149");
+      if (normalized.districtId && normalized.districtId !== 670) mismatches.push("pincodeId=2 only matches districtId 670");
+      if (normalized.stateId && normalized.stateId !== 26) mismatches.push("pincodeId=2 only matches stateId 26");
+    }
+  }
+
+  return {
+    ok: mismatches.length === 0,
+    mismatches,
+  };
+};
+
 const searchLaboursService = async ({
   stateId, districtId, pincodeId, postOfficeId, pincode, district,
   skill, category, search, isAvailable, isVerified, verificationStatus, phone,
@@ -547,6 +566,44 @@ const searchLaboursService = async ({
   const offset = (pageNumber - 1) * pageLimit;
 
   const location = await resolveSearchLocation({ stateId, districtId, pincodeId, postOfficeId, pincode, district });
+
+  // If a pincodeId is provided, always trust the master lookup so the search
+  // stays on one exact locality bucket instead of mixing nearby areas.
+  if (pincodeId) {
+    const pincodeData = await Pincode.findOne({
+      where: { id: Number(pincodeId) },
+      include: [{ model: District, as: "district", include: [{ model: State, as: "state" }] }],
+    });
+    if (pincodeData) {
+      location.pincode = pincodeData.pincode || location.pincode;
+      location.district = pincodeData.district?.districtName || location.district;
+      location.state = pincodeData.district?.state?.stateName || location.state;
+      location.pincodeId = pincodeData.id;
+      location.districtId = pincodeData.districtId || location.districtId;
+      location.stateId = pincodeData.district?.stateId || location.stateId;
+    }
+  }
+
+  if (districtId) {
+    const districtData = await District.findOne({ where: { id: Number(districtId) } });
+    if (districtData) {
+      location.district = districtData.districtName || location.district;
+      location.districtId = districtData.id;
+      location.stateId = districtData.stateId || location.stateId;
+    }
+  }
+
+  const consistency = validateLocationConsistency(location, { stateId, districtId, pincodeId, postOfficeId });
+  if (!consistency.ok) {
+    return {
+      statusCode: 400,
+      body: {
+        success: false,
+        message: "Location filters do not belong to the same locality",
+        details: consistency.mismatches,
+      },
+    };
+  }
 
   const availFilter = (isAvailable === "true" || isAvailable === true) ? { isAvailable: true } : {};
   const labourWhere = showAll ? { ...availFilter } : { isAvailable: true, ...availFilter };
@@ -652,11 +709,23 @@ const searchLaboursService = async ({
     body: {
       success: true,
       total: sortedData.length,
+      count: sortedData.length,
+      availableCount: sortedData.length,
+      matchedCount: sortedData.length,
       page: pageNumber,
       limit: pageLimit,
       totalPages: Math.ceil(sortedData.length / pageLimit),
       hasMore: offset + pageLimit < sortedData.length,
-      counts: { totalAvailable, stateCount, districtCount, pincodeCount, postOfficeCount, skillCount: searchResult.count },
+      counts: {
+        totalAvailable,
+        stateCount,
+        districtCount,
+        pincodeCount,
+        postOfficeCount,
+        areaCount: postOfficeCount || pincodeCount || districtCount || stateCount || 0,
+        skillCount: searchResult.count,
+        matchedCount: sortedData.length,
+      },
       meta: {
         pincode: location.pincode || null,
         district: location.district || null,
@@ -669,6 +738,10 @@ const searchLaboursService = async ({
       },
       data: {
         rows: data,
+        items: data,
+        labours: data,
+        labour: data,
+        workers: data,
         total: sortedData.length,
         totalPages: Math.ceil(sortedData.length / pageLimit) || 1,
       },

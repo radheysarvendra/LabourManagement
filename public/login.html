@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dehaade Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(191, 219, 254, 0.55), transparent 34%),
+        linear-gradient(135deg, #eef5ff 0%, #f8fbff 48%, #e8efff 100%);
+    }
+    .glass {
+      backdrop-filter: blur(18px);
+      background: rgba(255, 255, 255, 0.82);
+      box-shadow: 0 20px 60px rgba(30, 64, 175, 0.12);
+    }
+    .token-box {
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center px-4 py-10">
+  <div class="w-full max-w-5xl grid lg:grid-cols-2 gap-6 items-stretch">
+    <section class="text-slate-900 px-2 lg:px-4 flex items-center">
+      <div class="max-w-xl">
+        <p class="text-xs font-black tracking-[0.35em] text-blue-500 uppercase mb-3">Local Host JWT Login</p>
+        <h1 class="text-4xl md:text-5xl font-black leading-tight mb-4">Test the labour backend with a real token flow</h1>
+        <p class="text-base text-slate-600 font-medium leading-relaxed mb-6">
+          Use this screen to generate a JWT from the existing password login API, then copy the token and test protected endpoints locally.
+        </p>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <div class="bg-white/70 rounded-2xl p-4 border border-white">
+            <div class="text-xs font-bold text-slate-400 mb-1">1</div>
+            <div class="text-sm font-black text-slate-800">Phone + password</div>
+          </div>
+          <div class="bg-white/70 rounded-2xl p-4 border border-white">
+            <div class="text-xs font-bold text-slate-400 mb-1">2</div>
+            <div class="text-sm font-black text-slate-800">Select role</div>
+          </div>
+          <div class="bg-white/70 rounded-2xl p-4 border border-white">
+            <div class="text-xs font-bold text-slate-400 mb-1">3</div>
+            <div class="text-sm font-black text-slate-800">Copy JWT token</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="glass rounded-3xl p-6 md:p-8">
+      <div class="mb-6">
+        <p class="text-sm font-black text-blue-700 uppercase tracking-wide">Sign In</p>
+        <h2 class="text-2xl font-black text-slate-900 mt-1">JWT Login for Local Testing</h2>
+        <p class="text-sm text-slate-500 mt-2">This uses `/auth/login-password` and stores the token in localStorage.</p>
+      </div>
+
+      <div id="error" class="hidden mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"></div>
+      <div id="success" class="hidden mb-4 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700"></div>
+
+      <form id="loginForm" class="space-y-4">
+        <div>
+          <label class="block text-xs font-black text-slate-500 uppercase tracking-wide mb-1">Phone</label>
+          <input id="phone" type="tel" maxlength="10" placeholder="9876543210"
+            class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-blue-400" />
+        </div>
+        <div>
+          <label class="block text-xs font-black text-slate-500 uppercase tracking-wide mb-1">Password</label>
+          <input id="password" type="password" placeholder="1234"
+            class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-blue-400" />
+        </div>
+        <div>
+          <label class="block text-xs font-black text-slate-500 uppercase tracking-wide mb-1">Active Role</label>
+          <select id="activeRole"
+            class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-blue-400">
+            <option value="LABOUR">LABOUR</option>
+            <option value="OWNER">OWNER</option>
+            <option value="CONTRACTOR">CONTRACTOR</option>
+          </select>
+        </div>
+        <button id="loginBtn" type="submit"
+          class="w-full rounded-2xl bg-blue-600 px-4 py-3 text-sm font-black text-white transition hover:bg-blue-700">
+          Login and Get JWT
+        </button>
+      </form>
+
+      <div id="tokenWrap" class="hidden mt-6">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-xs font-black uppercase tracking-wide text-slate-500">JWT Token</p>
+          <button type="button" id="copyBtn" class="text-xs font-black text-blue-600 hover:text-blue-700">Copy</button>
+        </div>
+        <pre id="token" class="token-box rounded-2xl border border-slate-200 bg-slate-950 p-4 text-[11px] leading-5 text-slate-100 overflow-auto max-h-48"></pre>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const tokenKey = "labourJwtToken";
+    const tokenWrap = document.getElementById("tokenWrap");
+    const tokenEl = document.getElementById("token");
+    const errorEl = document.getElementById("error");
+    const successEl = document.getElementById("success");
+
+    const savedToken = localStorage.getItem(tokenKey);
+    if (savedToken) {
+      tokenEl.textContent = savedToken;
+      tokenWrap.classList.remove("hidden");
+      successEl.textContent = "Existing token loaded from localStorage.";
+      successEl.classList.remove("hidden");
+    }
+
+    function showMessage(el, message) {
+      el.textContent = message;
+      el.classList.remove("hidden");
+    }
+
+    function hideMessages() {
+      errorEl.classList.add("hidden");
+      successEl.classList.add("hidden");
+    }
+
+    document.getElementById("copyBtn").addEventListener("click", async () => {
+      const token = tokenEl.textContent.trim();
+      if (!token) return;
+      await navigator.clipboard.writeText(token);
+      showMessage(successEl, "Token copied to clipboard.");
+    });
+
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      hideMessages();
+      const btn = document.getElementById("loginBtn");
+      btn.disabled = true;
+      btn.textContent = "Signing in...";
+
+      try {
+        const res = await fetch("/auth/login-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone: document.getElementById("phone").value.trim(),
+            password: document.getElementById("password").value,
+            activeRole: document.getElementById("activeRole").value,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Login failed");
+
+        localStorage.setItem(tokenKey, data.token);
+        tokenEl.textContent = data.token;
+        tokenWrap.classList.remove("hidden");
+        showMessage(successEl, "Login successful. JWT saved in localStorage.");
+      } catch (err) {
+        showMessage(errorEl, err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Login and Get JWT";
+      }
+    });
+  </script>
+</body>
+</html>

@@ -98,6 +98,25 @@ const searchLabours = async (req,res) => {
   }
 };
 
+const filterLabours = async (req, res) => {
+  try {
+    const payload = {
+      ...(req.query || {}),
+      ...(req.body || {}),
+    };
+    const result = await labourService.searchLaboursService({
+      ...payload,
+      showAll: payload.showAll === true || payload.showAll === "true",
+    });
+    return res.status(result.statusCode).send(result.body);
+  } catch (err) {
+    return res.status(err.statusCode || 500).send({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
 const adminSearchLabours = async (req, res) => {
   try {
     const result = await labourService.searchLaboursService({ ...req.query, showAll: true });
@@ -116,5 +135,6 @@ module.exports = {
   getLabourById,
   updateLabourById,
   searchLabours,
+  filterLabours,
   adminSearchLabours,
 };

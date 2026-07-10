@@ -199,6 +199,7 @@ router.post("/api/categories/:categoryId/skills", verifyAdminToken, categoryCont
 router.delete("/api/categories/:categoryId/skills/:skillId", verifyAdminToken, categoryController.removeSkillFromCategory);
 router.get("/api/providers/search", verifyToken, providerController.searchProviders);
 router.get("/api/providers/count", verifyToken, providerController.countProviders);
+router.get("/api/providers/labour-match", verifyToken, providerController.getLabourLocationSkillMatch);
 router.get("/api/admin/providers/search", verifyAdminToken, providerController.searchProviders);
 router.get("/api/admin/providers/count", verifyAdminToken, providerController.countProviders);
 router.post("/api/bookings", verifyToken, bookingController.createBooking);
@@ -263,6 +264,7 @@ router.post(
 
 // ── Labour Verification ───────────────────────────────────────────────────────
 router.post("/api/labour/verification/submit",   verifyToken, labourVerificationController.submitVerification);
+router.post("/api/labour/upload-docs",           verifyToken, labourVerificationController.submitVerification);
 router.get("/api/labour/verification/status",    verifyToken, labourVerificationController.getMyVerificationStatus);
 // Admin
 router.get("/api/admin/labour-verifications",                       verifyAdminToken, labourVerificationController.getVerifications);
@@ -338,6 +340,8 @@ router.delete("/api/admin/ratings/:id", verifyAdminToken, ratingController.delet
 
 router.post("/createLabour", verifyAdminToken, labourController.createLabour);
 router.get("/searchLabour", verifyToken, labourController.searchLabours);
+router.post("/api/labours/filter", verifyToken, labourController.filterLabours);
+router.get("/api/labours/filter", verifyToken, labourController.filterLabours);
 router.get("/getAllLabour", verifyToken, labourController.getAllLabours);
 router.get("/getLabourById/:id",verifyToken, labourController.getLabourById);
 router.put("/updateLabourById/:id", verifyToken, labourController.updateLabourById);

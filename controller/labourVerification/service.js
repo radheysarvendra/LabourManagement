@@ -12,6 +12,12 @@ const ok       = (data, msg = "Success") => ({ statusCode: 200, body: { success:
 const bad      = (msg)                   => ({ statusCode: 400, body: { success: false, message: msg } });
 const notFound = (msg = "Not found")     => ({ statusCode: 404, body: { success: false, message: msg } });
 const forbidden= (msg)                   => ({ statusCode: 403, body: { success: false, message: msg } });
+const normalizeVerificationStatus = (value) => {
+  const status = String(value || "").toUpperCase();
+  if (status === "PENDING") return "PENDING_REVIEW";
+  if (status === "APPROVED") return "VERIFIED";
+  return status || "NOT_UPLOADED";
+};
 
 // ── submit verification request ───────────────────────────────────────────────
 
@@ -52,23 +58,25 @@ const submitVerificationService = async ({ userId, aadharNumber, documentUrl, cl
     await cloudinary.uploader.destroy(profile.photoCloudinaryPublicId).catch(() => {});
   }
 
+  const nextStatus = "pending";
+
   await profile.update({
     aadharNumber:            cleanAadhar                         || profile.aadharNumber,
     documentUrl:             documentUrl                         || profile.documentUrl,
     cloudinaryPublicId:      cloudinaryPublicId                  || profile.cloudinaryPublicId,
     photoUrl:                photoUrl                            || profile.photoUrl,
     photoCloudinaryPublicId: photoCloudinaryPublicId             || profile.photoCloudinaryPublicId,
-    verificationStatus:      "pending",
+    verificationStatus:      nextStatus,
     rejectionReason:         null,
     verificationSubmittedAt: new Date(),
   });
 
   return ok(
     {
-      verificationStatus:      "pending",
+      verificationStatus:      normalizeVerificationStatus(nextStatus),
       verificationSubmittedAt: new Date(),
     },
-    "Verification request submitted. Admin will review and approve shortly."
+    "Document uploaded successfully. Your document is under review. Admin will review it within 24–48 hours."
   );
 };
 
@@ -79,7 +87,7 @@ const getMyVerificationStatusService = async (userId) => {
     where: { userId },
     attributes: [
       "userId", "labourCode", "verificationStatus",
-      "verificationSubmittedAt", "verifiedAt", "rejectionReason",
+    "verificationSubmittedAt", "verifiedAt", "rejectionReason",
       "aadharNumber", "documentUrl", "photoUrl", "isLocked",
     ],
   });
@@ -87,14 +95,16 @@ const getMyVerificationStatusService = async (userId) => {
   if (!profile) return notFound("Labour profile not found");
 
   const statusMessages = {
-    pending:  "Your verification is under review",
-    verified: "Your profile is verified",
-    rejected: `Verification rejected: ${profile.rejectionReason || "No reason provided"}`,
+    pending:  "Your documents have been submitted successfully. Admin review usually takes 24–48 hours.",
+    verified: "Your identity verification is approved.",
+    rejected: `Your document was rejected. Please upload again.${profile.rejectionReason ? ` Reason: ${profile.rejectionReason}` : ""}`,
   };
+  const normalizedStatus = normalizeVerificationStatus(profile.verificationStatus);
 
   return ok({
     ...profile.toJSON(),
-    statusMessage: statusMessages[profile.verificationStatus] || "Unknown status",
+    verificationStatus: normalizedStatus,
+    statusMessage: statusMessages[String(profile.verificationStatus || "").toLowerCase()] || statusMessages[String(normalizedStatus || "").toLowerCase()] || "Unknown status",
   });
 };
 
@@ -102,7 +112,11 @@ const getMyVerificationStatusService = async (userId) => {
 
 const getVerificationsService = async ({ verificationStatus, userId, page = 1, limit = 20 }) => {
   const where = {};
-  if (verificationStatus) where.verificationStatus = verificationStatus;
+  if (verificationStatus) where.verificationStatus = String(verificationStatus).toLowerCase() === "pending_review"
+    ? "pending"
+    : String(verificationStatus).toLowerCase() === "verified"
+      ? "verified"
+      : String(verificationStatus).toLowerCase();
   if (userId)             where.userId             = userId;
 
   const offset = (Number(page) - 1) * Number(limit);
