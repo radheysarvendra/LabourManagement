@@ -199,6 +199,7 @@ router.post("/api/categories/:categoryId/skills", verifyAdminToken, categoryCont
 router.delete("/api/categories/:categoryId/skills/:skillId", verifyAdminToken, categoryController.removeSkillFromCategory);
 router.get("/api/providers/search", verifyToken, providerController.searchProviders);
 router.get("/api/providers/count", verifyToken, providerController.countProviders);
+router.get("/api/providers/labour-match", verifyToken, providerController.getLabourLocationSkillMatch);
 router.get("/api/admin/providers/search", verifyAdminToken, providerController.searchProviders);
 router.get("/api/admin/providers/count", verifyAdminToken, providerController.countProviders);
 router.post("/api/bookings", verifyToken, bookingController.createBooking);

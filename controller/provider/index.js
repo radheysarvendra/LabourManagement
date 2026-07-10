@@ -81,6 +81,15 @@ const updateContractorAvailability = async (req, res) => {
   }
 };
 
+const getLabourLocationSkillMatch = async (req, res) => {
+  try {
+    const result = await providerService.getLabourLocationSkillMatch(req.query);
+    return res.status(result.statusCode).send(result.body);
+  } catch (err) {
+    return res.status(err.statusCode || 500).send({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   searchProviders,
   countProviders,
@@ -90,4 +99,5 @@ module.exports = {
   approveContractor,
   rejectContractor,
   updateContractorAvailability,
+  getLabourLocationSkillMatch,
 };
