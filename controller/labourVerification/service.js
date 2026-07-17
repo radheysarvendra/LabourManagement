@@ -50,7 +50,7 @@ const submitVerificationService = async ({ userId, aadharNumber, documentUrl, cl
   }
 
   // Only delete from temp/ — never touch already-approved verified/ files
-  const isInTemp = id => id && !id.includes("dehaade/verified/");
+  const isInTemp = id => id && !id.includes("dihadii/verified/");
   if (isInTemp(profile.cloudinaryPublicId)) {
     await cloudinary.uploader.destroy(profile.cloudinaryPublicId).catch(() => {});
   }
@@ -157,11 +157,11 @@ const approveVerificationService = async (labourUserId, adminId) => {
   if (profile.verificationStatus === "verified") return bad("Already verified");
   if (profile.verificationStatus !== "pending")  return bad("No pending verification request found");
 
-  // Move Cloudinary files from dehaade/temp/ → dehaade/verified/
+  // Move Cloudinary files from dihadii/temp/ → dihadii/verified/
   const moveToVerified = async (publicId, currentUrl) => {
-    if (!publicId || publicId.includes("dehaade/verified/")) return { url: currentUrl, id: publicId };
+    if (!publicId || publicId.includes("dihadii/verified/")) return { url: currentUrl, id: publicId };
     try {
-      const newId  = publicId.replace("dehaade/temp/", "dehaade/verified/");
+      const newId  = publicId.replace("dihadii/temp/", "dihadii/verified/");
       const moved  = await cloudinary.uploader.rename(publicId, newId);
       return { url: moved.secure_url, id: newId };
     } catch (err) {

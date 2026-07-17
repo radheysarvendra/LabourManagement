@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: dihadii-backend
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: RUN_STARTUP_SEEDS
+        value: "true"
+      - key: SKIP_DEFAULT_ADMIN_BOOTSTRAP
+        value: "false"

@@ -1,5 +1,5 @@
 /**
- * Smoke test — hits every major flow of the Dehaade backend.
+ * Smoke test — hits every major flow of the Dihadii backend.
  * Run: node scripts/smokeTest.js
  * Requires server to be up on PORT (default 5352).
  */
@@ -122,7 +122,7 @@ async function testAdminAuth() {
     r.status === 401 || r.status === 400 || r.status === 404, r.body);
 
   r = await req("POST", "/api/admin/auth/login", {
-    email:    process.env.DEFAULT_ADMIN_EMAIL    || "admin@dehaddi.com",
+    email:    process.env.DEFAULT_ADMIN_EMAIL    || "admin@dihadii.com",
     password: process.env.DEFAULT_ADMIN_PASSWORD || "admin@123",
   });
   expect("POST /api/admin/auth/login (good creds) → 200 + token",
@@ -530,7 +530,7 @@ async function testRatings() {
 
 (async () => {
   console.log("=".repeat(60));
-  console.log(" DEHAADE BACKEND — SMOKE TEST");
+  console.log(" DIHADII BACKEND — SMOKE TEST");
   console.log(`  Target: ${BASE}`);
   console.log("=".repeat(60));
 

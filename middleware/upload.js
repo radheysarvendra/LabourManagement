@@ -14,7 +14,7 @@ const upload = multer({
 });
 
 // Middleware: upload buffer → Cloudinary, attach result to req.cloudinaryResult
-upload.uploadToCloudinary = (folder = "dehaade/temp") =>
+upload.uploadToCloudinary = (folder = "dihadii/temp") =>
   async (req, _res, next) => {
     if (!req.file) return next();
     try {
