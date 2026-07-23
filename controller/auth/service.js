@@ -1,5 +1,6 @@
 const db = require("../../model/index");
 const { generateSession } = require("../../middleware/auth");
+const crypto = require("crypto");
 
 const User = db.user;
 const Labour = db.labour;
@@ -17,10 +18,22 @@ const ROLE_CODE_MAP = {
   contractor_customer: "OWNER",
 };
 
+const hashPassword = (password) => {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(String(password), salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+};
+
+const isPasswordLengthValid = (password) => {
+  const length = String(password || "").length;
+  return length >= 4 && length <= 14;
+};
+
 const registerService = async (payload) => {
   const {
     name,
     phone,
+    password,
     role,
     skills,
     age,
@@ -41,8 +54,11 @@ const registerService = async (payload) => {
     postOfficeId,
   } = payload;
 
-  if (!name || !phone || !role) {
-    return { statusCode: 400, body: { success: false, message: "Name, phone number, and role are required" } };
+  if (!name || !phone || !role || !password) {
+    return { statusCode: 400, body: { success: false, message: "Name, phone number, role, and password are required" } };
+  }
+  if (!isPasswordLengthValid(password)) {
+    return { statusCode: 400, body: { success: false, message: "Password must be between 4 and 14 characters" } };
   }
 
   const normalizedPhone = String(phone).replace(/[^0-9]/g, "").trim();
@@ -80,6 +96,7 @@ const registerService = async (payload) => {
     const newUser = await User.create({
       name,
       phone: normalizedPhone,
+      passwordHash: hashPassword(password),
       registeredAs: role,
       status: 1,
       age: age ? Number(age) : null,
