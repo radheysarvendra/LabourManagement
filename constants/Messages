@@ -21,7 +21,7 @@ module.exports = {
   // LABOUR
   LABOUR_CREATED_SUCCESS: "Worker profile created successfully",
   LABOUR_UPDATED_SUCCESS: "Worker profile updated successfully",
-  LABOUR_NOT_FOUND: "Labour not found",
+  LABOUR_NOT_FOUND: "Labour not found.",
 
   // OWNER
   OWNER_CREATED_SUCCESSFULLY: "Owner profile created successfully",
