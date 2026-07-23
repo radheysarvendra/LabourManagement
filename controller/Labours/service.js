@@ -191,6 +191,7 @@ const mapLabourWithSkills = (labour) => {
     name: user.name ?? null,
     phone: user.phone ?? null,
     labourCode: json.labourCode,
+    userCode: json.userCode || json.labourCode || null,
     status: user.status ?? null,
     isAvailable: json.isAvailable,
     isVerified: json.isVerified,

@@ -112,6 +112,7 @@ db.contractorProfile = require("./contractorProfile")(sequelize, DataTypes);
 db.contractorSkill = require("./contractorSkill")(sequelize, DataTypes);
 db.contractorCategory = require("./contractorCategory")(sequelize, DataTypes);
 db.session = require("./session")(sequelize, DataTypes);
+db.userVerification = db.labourProfile;
 db.orderAssignment = require("./orderAssignment")(sequelize, DataTypes);
 db.labourAssignmentDetail = require("./labourAssignmentDetail")(sequelize, DataTypes);
 db.contractorAssignmentDetail = require("./contractorAssignmentDetail")(sequelize, DataTypes);
