@@ -5,7 +5,7 @@ module.exports = (sequelize, DataTypes) => {
       primaryKey: true,
       allowNull: false,
     },
-    labourCode: {
+    userCode: {
       type: DataTypes.STRING,
       allowNull: true,
       unique: true,

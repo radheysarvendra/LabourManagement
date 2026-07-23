@@ -1,7 +1,7 @@
 const db         = require("../../model/index.js");
 const cloudinary  = require("../../utils/cloudinary");
 
-const LabourProfile = db.labourProfile;
+const LabourProfile = db.userVerification || db.labourProfile;
 const Labour        = db.labour;
 const User          = db.user;
 const Admin         = db.admin;
@@ -33,7 +33,7 @@ const submitVerificationService = async ({ userId, aadharNumber, documentUrl, cl
   }
 
   const profile = await LabourProfile.findOne({ where: { userId } });
-  if (!profile) return notFound("Labour profile not found. Complete your profile first.");
+  if (!profile) return notFound("User verification record not found. Complete your profile first.");
 
   // Locked after admin approval — cannot re-submit
   if (profile.isLocked) {
@@ -86,7 +86,7 @@ const getMyVerificationStatusService = async (userId) => {
   const profile = await LabourProfile.findOne({
     where: { userId },
     attributes: [
-      "userId", "labourCode", "verificationStatus",
+      "userId", "userCode", "verificationStatus",
     "verificationSubmittedAt", "verifiedAt", "rejectionReason",
       "aadharNumber", "documentUrl", "photoUrl", "isLocked",
     ],
@@ -132,7 +132,7 @@ const getVerificationsService = async ({ verificationStatus, userId, page = 1, l
         { model: User, as: "user", attributes: ["id", "name", "phone"] },
       ],
       attributes: [
-        "userId", "labourCode", "verificationStatus",
+        "userId", "userCode", "verificationStatus",
         "verificationSubmittedAt", "verifiedAt", "rejectionReason",
         "aadharNumber", "documentUrl", "photoUrl", "isLocked",
       ],

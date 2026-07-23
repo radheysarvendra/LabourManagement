@@ -118,17 +118,17 @@ const registerService = async (payload) => {
 
     if (role === "labour") {
       // Generate unique LAB-XXXXXX code before creating the record
-      let labourCode = null;
+      let userCode = null;
       for (let i = 0; i < 8; i++) {
         const code = `LAB-${Math.floor(100000 + Math.random() * 900000)}`;
-        const exists = await Labour.findOne({ where: { labourCode: code } });
-        if (!exists) { labourCode = code; break; }
+        const exists = await Labour.findOne({ where: { userCode: code } });
+        if (!exists) { userCode = code; break; }
       }
-      if (!labourCode) labourCode = `LAB-${Date.now().toString().slice(-6)}`;
+      if (!userCode) userCode = `LAB-${Date.now().toString().slice(-6)}`;
 
       newProfile = await Labour.create({
         userId: newUser.id,
-        labourCode,
+        userCode,
         isAvailable: true,
         isVerified: false,
         registeredFrom: "labour",
@@ -137,7 +137,7 @@ const registerService = async (payload) => {
       // labourProfile must exist before LabourSkill (FK: labourSkills.labourUserId → labourProfiles.userId)
       await db.labourProfile.create({
         userId: newUser.id,
-        labourCode,
+        userCode,
         experienceYears: 0,
         isAvailable: true,
         verificationStatus: "pending",
@@ -190,7 +190,7 @@ const registerService = async (payload) => {
       }, { transaction: t });
     }
 
-    return { user: newUser, profileRecord: newProfile, appRoleCode };
+      return { user: newUser, profileRecord: newProfile, appRoleCode, userCode };
   });
 
   const { token } = await generateSession(user.id, appRoleCode);
@@ -215,6 +215,7 @@ const registerService = async (payload) => {
         registeredAs: user.registeredAs,
       },
       profile: profileRecord,
+      userCode: profileRecord.userCode || null,
       roles: [role],
       isRegistered: true,
     },
@@ -303,7 +304,8 @@ const completeLabourProfileService = async ({ userId, userType, isSessionAuth, s
       if (!role) throw new Error("Application role LABOUR is not configured");
       await db.userRole.upsert({ userId: globalUser.id, roleId: role.id, profileStatus: "complete" }, { transaction });
       await db.labourProfile.upsert({
-        userId: globalUser.id, labourCode: legacyLabour.labourCode || null,
+        userId: globalUser.id,
+        userCode: legacyLabour.userCode || null,
         experienceYears: legacyLabour.experienceYears || 0,
         isAvailable: true, verificationStatus: legacyLabour.isVerified ? "verified" : "pending",
       }, { transaction });
@@ -349,17 +351,17 @@ const completeLabourProfileService = async ({ userId, userType, isSessionAuth, s
     }
   }
 
-  let labourCode2 = null;
+  let userCode2 = null;
   for (let i = 0; i < 8; i++) {
     const code = `LAB-${Math.floor(100000 + Math.random() * 900000)}`;
-    const exists = await Labour.findOne({ where: { labourCode: code } });
-    if (!exists) { labourCode2 = code; break; }
+    const exists = await Labour.findOne({ where: { userCode: code } });
+    if (!exists) { userCode2 = code; break; }
   }
-  if (!labourCode2) labourCode2 = `LAB-${Date.now().toString().slice(-6)}`;
+  if (!userCode2) userCode2 = `LAB-${Date.now().toString().slice(-6)}`;
 
   const newLabour = await Labour.create({
     userId: profileRecord.userId || null,
-    labourCode: labourCode2,
+    userCode: userCode2,
     isAvailable: true,
     isVerified: false,
     registeredFrom: "labour",
