@@ -104,11 +104,11 @@ router.get("/api/site-settings", (req, res) => {
   return res.status(200).json({
     success: true,
     data: {
-      siteName: process.env.SITE_NAME || "Dehaadi",
+      siteName: process.env.SITE_NAME || "Dihadii",
       logo: process.env.SITE_LOGO || "https://example.com/logo.png",
       phone: process.env.SITE_PHONE || "+919999999999",
       whatsapp: process.env.SITE_WHATSAPP || "+919999999999",
-      email: process.env.SITE_EMAIL || "support@dehaadi.com",
+      email: process.env.SITE_EMAIL || "support@dihadii.com",
       footerText: process.env.SITE_FOOTER_TEXT || "Trusted labour and contractor platform",
       socialLinks: {
         facebook: process.env.SITE_FACEBOOK || "",
@@ -126,7 +126,7 @@ router.get("/api/public/testimonials", (_req, res) => {
       {
         id: 1,
         name: "Amit Kumar",
-        message: "Dehaadi helped us find reliable labour quickly.",
+        message: "Dihadii helped us find reliable labour quickly.",
         rating: 5,
         city: "Noida",
       },
@@ -140,7 +140,7 @@ router.get("/api/public/faqs", (_req, res) => {
     data: [
       {
         id: 1,
-        question: "How does Dehaadi work?",
+        question: "How does Dihadii work?",
         answer: "Users can view labour and contractor information and contact the team.",
       },
     ],

@@ -165,6 +165,11 @@ const hashPassword = (password) => {
   return `${salt}:${hash}`;
 };
 
+const isPasswordLengthValid = (password) => {
+  const length = String(password || "").length;
+  return length >= 4 && length <= 14;
+};
+
 const verifyPassword = (password, savedHash) => {
   if (!savedHash) return false;
   if (!savedHash.includes(":")) return false;
@@ -853,6 +858,9 @@ const resetPassword = async (req, res) => {
     const newPassword = String(req.body.newPassword || "");
     if (!resetToken || !newPassword) {
       return res.status(400).send({ success: false, message: "resetToken and newPassword are required" });
+    }
+    if (!isPasswordLengthValid(newPassword)) {
+      return res.status(400).send({ success: false, message: "Password must be between 4 and 14 characters" });
     }
     const decoded = jwt.verify(resetToken, TOKEN_SECRET);
     if (decoded.purpose !== "password-reset") {

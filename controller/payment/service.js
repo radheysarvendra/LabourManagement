@@ -13,7 +13,7 @@ const notFound = (msg = "Not found")     => ({ statusCode: 404, body: { success:
 
 const getPaymentConfigService = () => {
   const upiId       = process.env.UPI_ID       || "";
-  const businessName= process.env.BUSINESS_NAME || "Dehaade";
+  const businessName= process.env.BUSINESS_NAME || "Dihadii";
 
   if (!upiId) {
     return { statusCode: 503, body: { success: false, message: "Payment not configured. Contact support." } };

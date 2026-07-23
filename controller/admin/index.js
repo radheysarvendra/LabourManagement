@@ -115,7 +115,7 @@ const ensureDefaultAdmin = async () => {
   }
 
   const superAdminRole = savedRoles.find((role) => role.name === "super_admin") || savedRoles[0];
-  const defaultEmail = normalizeEmail(process.env.DEFAULT_ADMIN_EMAIL || "admin@dehaadi.com");
+  const defaultEmail = normalizeEmail(process.env.DEFAULT_ADMIN_EMAIL || "admin@dihadii.com");
   const existingAdmin = await Admin.findOne({ where: { email: defaultEmail } });
 
   if (!existingAdmin) {
