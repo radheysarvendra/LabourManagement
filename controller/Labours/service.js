@@ -398,7 +398,14 @@ const getLabourByIdService = async (id) => {
 };
 
 const updateLabourByIdService = async (id, payload) => {
-  const labour = await Labour.findOne({ where: { id } });
+  const labour = await Labour.findOne({
+    where: {
+      [Op.or]: [
+        { id },
+        { userId: id },
+      ],
+    },
+  });
   if (!labour) {
     return { statusCode: 404, body: { success: false, message: msg.LABOUR_NOT_FOUND } };
   }

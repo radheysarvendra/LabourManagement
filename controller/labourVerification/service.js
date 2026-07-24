@@ -21,7 +21,7 @@ const normalizeVerificationStatus = (value) => {
 
 // ── submit verification request ───────────────────────────────────────────────
 
-const submitVerificationService = async ({ userId, aadharNumber, documentUrl, cloudinaryPublicId, photoUrl, photoCloudinaryPublicId }) => {
+const submitVerificationService = async ({ userId, labourId, aadharNumber, documentUrl, cloudinaryPublicId, photoUrl, photoCloudinaryPublicId }) => {
   if (!documentUrl) {
     return bad("Aadhaar number and document are required");
   }
@@ -32,7 +32,12 @@ const submitVerificationService = async ({ userId, aadharNumber, documentUrl, cl
     return bad("Aadhaar number must be exactly 12 digits (numbers only)");
   }
 
-  const profile = await LabourProfile.findOne({ where: { userId } });
+  const resolvedUserId = userId || labourId;
+  if (!resolvedUserId) {
+    return bad("User session not found. Please login again.");
+  }
+
+  const profile = await LabourProfile.findOne({ where: { userId: resolvedUserId } });
   if (!profile) return notFound("User verification record not found. Complete your profile first.");
 
   // Locked after admin approval — cannot re-submit
@@ -83,6 +88,8 @@ const submitVerificationService = async ({ userId, aadharNumber, documentUrl, cl
 // ── get own verification status ───────────────────────────────────────────────
 
 const getMyVerificationStatusService = async (userId) => {
+  if (!userId) return notFound("User verification record not found");
+
   const profile = await LabourProfile.findOne({
     where: { userId },
     attributes: [
