@@ -34,11 +34,25 @@ const submitVerificationService = async ({ userId, labourId, aadharNumber, docum
 
   const resolvedUserId = userId || labourId;
   if (!resolvedUserId) {
-    return bad("User session not found. Please login again.");
+    return forbidden("Authentication required");
   }
 
-  const profile = await LabourProfile.findOne({ where: { userId: resolvedUserId } });
-  if (!profile) return notFound("User verification record not found. Complete your profile first.");
+  let profile = await LabourProfile.findOne({ where: { userId: resolvedUserId } });
+  if (!profile) {
+    const labour = await Labour.findOne({ where: { userId: resolvedUserId } });
+    if (!labour) return notFound("Labour profile not found. Complete your profile first.");
+
+    [profile] = await LabourProfile.findOrCreate({
+      where: { userId: resolvedUserId },
+      defaults: {
+        userId: resolvedUserId,
+        userCode: labour.labourCode || null,
+        experienceYears: labour.experienceYears || 0,
+        isAvailable: labour.isAvailable !== false,
+        verificationStatus: labour.isVerified ? "verified" : "pending",
+      },
+    });
+  }
 
   // Locked after admin approval — cannot re-submit
   if (profile.isLocked) {
