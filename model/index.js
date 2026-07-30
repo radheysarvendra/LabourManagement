@@ -46,9 +46,23 @@ const connectDB = async () => {
     await sequelize.authenticate();
     console.log("PostgreSQL Connected Successfully");
 
+    const queryInterface = sequelize.getQueryInterface();
+
+    // A fresh local database has no tables for ensureSchema to inspect. Create
+    // the model tables first; existing databases still run migrations first so
+    // older schemas are brought forward before model indexes are evaluated.
+    if (shouldSyncDatabase) {
+      const tables = (await queryInterface.showAllTables()).map((table) =>
+        typeof table === "string" ? table : table.tableName
+      );
+      if (!tables.includes("users") || !tables.includes("orders")) {
+        await sequelize.sync({ alter: false, force: false });
+        console.log("Created initial database tables");
+      }
+    }
+
     // Ensure critical auth column exists even when full sync is disabled.
     try {
-      const queryInterface = sequelize.getQueryInterface();
       const table = await queryInterface.describeTable("users");
       if (!table.passwordHash) {
         await queryInterface.addColumn("users", "passwordHash", {
@@ -70,6 +84,8 @@ const connectDB = async () => {
     } else {
       console.log("Database sync skipped (ENABLE_DB_SYNC=false)");
     }
+
+    return true;
 
   } catch (error) {
     console.error("❌ DB Connection Error:", error);

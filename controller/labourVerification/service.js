@@ -32,8 +32,24 @@ const submitVerificationService = async ({ userId, aadharNumber, documentUrl, cl
     return bad("Aadhaar number must be exactly 12 digits (numbers only)");
   }
 
-  const profile = await LabourProfile.findOne({ where: { userId } });
-  if (!profile) return notFound("User verification record not found. Complete your profile first.");
+  if (!userId) return forbidden("Authentication required");
+
+  let profile = await LabourProfile.findOne({ where: { userId } });
+  if (!profile) {
+    const labour = await Labour.findOne({ where: { userId } });
+    if (!labour) return notFound("Labour profile not found. Complete your profile first.");
+
+    [profile] = await LabourProfile.findOrCreate({
+      where: { userId },
+      defaults: {
+        userId,
+        userCode: labour.labourCode || null,
+        experienceYears: labour.experienceYears || 0,
+        isAvailable: labour.isAvailable !== false,
+        verificationStatus: labour.isVerified ? "verified" : "pending",
+      },
+    });
+  }
 
   // Locked after admin approval — cannot re-submit
   if (profile.isLocked) {

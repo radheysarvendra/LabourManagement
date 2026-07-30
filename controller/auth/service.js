@@ -115,20 +115,20 @@ const registerService = async (payload) => {
     }, { transaction: t });
 
     let newProfile = null;
+    let userCode = null;
 
     if (role === "labour") {
       // Generate unique LAB-XXXXXX code before creating the record
-      let userCode = null;
       for (let i = 0; i < 8; i++) {
         const code = `LAB-${Math.floor(100000 + Math.random() * 900000)}`;
-        const exists = await Labour.findOne({ where: { userCode: code } });
+        const exists = await Labour.findOne({ where: { labourCode: code }, transaction: t });
         if (!exists) { userCode = code; break; }
       }
       if (!userCode) userCode = `LAB-${Date.now().toString().slice(-6)}`;
 
       newProfile = await Labour.create({
         userId: newUser.id,
-        userCode,
+        labourCode: userCode,
         isAvailable: true,
         isVerified: false,
         registeredFrom: "labour",
@@ -215,7 +215,7 @@ const registerService = async (payload) => {
         registeredAs: user.registeredAs,
       },
       profile: profileRecord,
-      userCode: profileRecord.userCode || null,
+      userCode: profileRecord.labourCode || null,
       roles: [role],
       isRegistered: true,
     },
@@ -272,10 +272,7 @@ const completeOwnerProfileService = async ({ userId, userType, isSessionAuth, wo
 };
 
 // Called when an owner user wants to use labour role for the first time
-const completeLabourProfileService = async ({ userId, userType, isSessionAuth, skills, age, gender, city, state, district, pincode, area, postOffice, address, stateId, districtId, pincodeId, postOfficeId }) => {
-  if (!age || !gender) {
-    return { statusCode: 400, body: { success: false, message: "Age and gender are required" } };
-  }
+const completeLabourProfileService = async ({ userId, userType, isSessionAuth, skills, skillWages, experienceYears, age, gender, city, state, district, pincode, area, postOffice, address, stateId, districtId, pincodeId, postOfficeId }) => {
   if (!skills || !Array.isArray(skills) || skills.length === 0) {
     return { statusCode: 400, body: { success: false, message: "Select at least one worker skill" } };
   }
@@ -283,38 +280,171 @@ const completeLabourProfileService = async ({ userId, userType, isSessionAuth, s
   if (isSessionAuth) {
     const globalUser = await User.findByPk(userId);
     if (!globalUser) return { statusCode: 404, body: { success: false, message: "User not found" } };
+    const existingLabour = await Labour.findOne({ where: { userId: globalUser.id } });
+    const resolvedAge = age ?? globalUser.age;
+    const resolvedGender = gender ?? globalUser.gender;
+    if (!existingLabour && (!resolvedAge || !resolvedGender)) {
+      return { statusCode: 400, body: { success: false, message: "Age and gender are required when creating a labour profile" } };
+    }
     const labour = await db.sequelize.transaction(async (transaction) => {
-      await globalUser.update({
-        age: Number(age), gender, city: city || globalUser.city, state: state || globalUser.state,
-        stateId: stateId || globalUser.stateId, district: district || globalUser.district,
-        districtId: districtId || globalUser.districtId, pincode: pincode || globalUser.pincode,
-        pincodeId: pincodeId || globalUser.pincodeId, postOffice: postOffice || globalUser.postOffice,
-        postOfficeId: postOfficeId || globalUser.postOfficeId, area: area || globalUser.area,
-        address: address || globalUser.address,
-      }, { transaction });
-      const [legacyLabour] = await Labour.findOrCreate({
-        where: { userId: globalUser.id },
-        defaults: {
-          isAvailable: true,
-          isVerified: false, registeredFrom: "labour",
+      const requestedSkillIds = skills
+        .map((item) => typeof item === "object" ? item.skillId ?? item.id : item)
+        .filter((value) => /^\d+$/.test(String(value || "")))
+        .map(Number);
+      const requestedSkillNames = skills
+        .map((item) => typeof item === "object" ? item.skillName ?? item.name : item)
+        .filter((value) => value && !/^\d+$/.test(String(value)))
+        .map((value) => String(value).trim());
+      const skillRows = await db.skill.findAll({
+        where: {
+          isActive: true,
+          [db.Sequelize.Op.or]: [
+            ...(requestedSkillIds.length ? [{ id: { [db.Sequelize.Op.in]: requestedSkillIds } }] : []),
+            ...requestedSkillNames.map((name) => ({ skillName: { [db.Sequelize.Op.iLike]: name } })),
+          ],
         },
         transaction,
       });
+      const existingSkillRows = existingLabour
+        ? await LabourSkill.findAll({
+            where: {
+              [db.Sequelize.Op.or]: [
+                { labourUserId: globalUser.id },
+                { labourId: existingLabour.id },
+              ],
+            },
+            transaction,
+          })
+        : [];
+      const existingSkillById = new Map(
+        existingSkillRows.map((row) => [Number(row.skillId), row]),
+      );
+      const byId = new Map(skillRows.map((row) => [Number(row.id), row]));
+      const byName = new Map(skillRows.map((row) => [String(row.skillName).trim().toLowerCase(), row]));
+      const resolvedSkills = [];
+      const seenSkillIds = new Set();
+      const wageByName = Object.entries(skillWages || {}).reduce((map, [name, wage]) => {
+        map.set(String(name).trim().toLowerCase(), wage);
+        return map;
+      }, new Map());
+
+      for (const item of skills) {
+        const rawId = typeof item === "object" ? item.skillId ?? item.id : item;
+        const rawName = typeof item === "object" ? item.skillName ?? item.name : item;
+        const skillRow = /^\d+$/.test(String(rawId || ""))
+          ? byId.get(Number(rawId))
+          : byName.get(String(rawName || "").trim().toLowerCase());
+        if (!skillRow) {
+          const error = new Error(`Skill not found or inactive: ${rawName || rawId}`);
+          error.statusCode = 400;
+          throw error;
+        }
+        if (seenSkillIds.has(Number(skillRow.id))) continue;
+        seenSkillIds.add(Number(skillRow.id));
+        const existingSkill = existingSkillById.get(Number(skillRow.id));
+        const itemWage = typeof item === "object" ? item.dailyWage ?? item.wage : undefined;
+        const resolvedWage = Number(
+          itemWage ??
+          wageByName.get(String(skillRow.skillName).trim().toLowerCase()) ??
+          existingSkill?.dailyWage ??
+          skillRow.defaultWage ??
+          0,
+        );
+        const resolvedExperience = Number(
+          (typeof item === "object" ? item.experienceYears : undefined) ??
+          experienceYears ??
+          existingSkill?.experienceYears ??
+          0,
+        );
+        if (!Number.isFinite(resolvedWage) || resolvedWage < 0 || !Number.isFinite(resolvedExperience) || resolvedExperience < 0) {
+          const error = new Error(`Invalid wage or experience for skill: ${skillRow.skillName}`);
+          error.statusCode = 400;
+          throw error;
+        }
+        resolvedSkills.push({
+          skillId: Number(skillRow.id),
+          skillName: skillRow.skillName,
+          dailyWage: resolvedWage,
+          experienceYears: resolvedExperience,
+        });
+      }
+
+      const userUpdate = {};
+      if (resolvedAge) userUpdate.age = Number(resolvedAge);
+      if (resolvedGender) userUpdate.gender = resolvedGender;
+      if (city !== undefined) userUpdate.city = city;
+      if (state !== undefined) userUpdate.state = state;
+      if (stateId !== undefined) userUpdate.stateId = stateId;
+      if (district !== undefined) userUpdate.district = district;
+      if (districtId !== undefined) userUpdate.districtId = districtId;
+      if (pincode !== undefined) userUpdate.pincode = pincode;
+      if (pincodeId !== undefined) userUpdate.pincodeId = pincodeId;
+      if (postOffice !== undefined) userUpdate.postOffice = postOffice;
+      if (postOfficeId !== undefined) userUpdate.postOfficeId = postOfficeId;
+      if (area !== undefined) userUpdate.area = area;
+      if (address !== undefined) userUpdate.address = address;
+      if (Object.keys(userUpdate).length > 0) {
+        await globalUser.update(userUpdate, { transaction });
+      }
+      let legacyLabour = existingLabour;
+      if (!legacyLabour) {
+        let labourCode = null;
+        for (let i = 0; i < 8; i++) {
+          const candidate = `LAB-${Math.floor(100000 + Math.random() * 900000)}`;
+          const exists = await Labour.findOne({ where: { labourCode: candidate }, transaction });
+          if (!exists) { labourCode = candidate; break; }
+        }
+        if (!labourCode) labourCode = `LAB-${Date.now().toString().slice(-6)}`;
+        legacyLabour = await Labour.create({
+          userId: globalUser.id,
+          labourCode,
+          isAvailable: true,
+          isVerified: false,
+          registeredFrom: "labour",
+        }, { transaction });
+      }
+      if (experienceYears !== undefined && Number(experienceYears) !== Number(legacyLabour.experienceYears)) {
+        await legacyLabour.update({ experienceYears: Number(experienceYears) }, { transaction });
+      }
       const role = await db.appRole.findOne({ where: { code: "LABOUR", isActive: true }, transaction });
       if (!role) throw new Error("Application role LABOUR is not configured");
       await db.userRole.upsert({ userId: globalUser.id, roleId: role.id, profileStatus: "complete" }, { transaction });
       await db.labourProfile.upsert({
         userId: globalUser.id,
-        userCode: legacyLabour.userCode || null,
+        userCode: legacyLabour.labourCode || null,
         experienceYears: legacyLabour.experienceYears || 0,
-        isAvailable: true, verificationStatus: legacyLabour.isVerified ? "verified" : "pending",
+        isAvailable: legacyLabour.isAvailable !== false,
+        verificationStatus: legacyLabour.isVerified ? "verified" : "pending",
       }, { transaction });
-      await LabourSkill.bulkCreate(skills.map((sid) => ({
-        labourUserId: globalUser.id, labourId: legacyLabour.id, skillId: Number(sid),
-      })), { transaction, ignoreDuplicates: true });
-      return legacyLabour;
+      await LabourSkill.destroy({
+        where: { [db.Sequelize.Op.or]: [{ labourUserId: globalUser.id }, { labourId: legacyLabour.id }] },
+        transaction,
+      });
+      await LabourSkill.bulkCreate(resolvedSkills.map((item, index) => ({
+        labourUserId: globalUser.id,
+        labourId: legacyLabour.id,
+        skillId: item.skillId,
+        dailyWage: item.dailyWage,
+        experienceYears: item.experienceYears,
+        isPrimary: index === 0,
+      })), { transaction });
+      return { labour: legacyLabour, resolvedSkills };
     });
-    return { statusCode: 200, body: { success: true, message: "Labour profile complete", profile: labour } };
+    return {
+      statusCode: 200,
+      body: {
+        success: true,
+        message: "Labour profile and skills updated successfully",
+        profile: labour.labour,
+        labourId: labour.labour.id,
+        userCode: labour.labour.labourCode,
+        skills: labour.resolvedSkills.map((item) => item.skillId),
+        skillIds: labour.resolvedSkills.map((item) => item.skillId),
+        skillDetails: labour.resolvedSkills,
+        skillWages: Object.fromEntries(labour.resolvedSkills.map((item) => [item.skillName, item.dailyWage])),
+        experienceYears: Number(labour.labour.experienceYears || 0),
+      },
+    };
   }
 
   const profileRecord = userType === "owner" || userType === "contractor" || userType === "contractor_customer"
@@ -354,22 +484,26 @@ const completeLabourProfileService = async ({ userId, userType, isSessionAuth, s
   let userCode2 = null;
   for (let i = 0; i < 8; i++) {
     const code = `LAB-${Math.floor(100000 + Math.random() * 900000)}`;
-    const exists = await Labour.findOne({ where: { userCode: code } });
+    const exists = await Labour.findOne({ where: { labourCode: code } });
     if (!exists) { userCode2 = code; break; }
   }
   if (!userCode2) userCode2 = `LAB-${Date.now().toString().slice(-6)}`;
 
   const newLabour = await Labour.create({
     userId: profileRecord.userId || null,
-    userCode: userCode2,
+    labourCode: userCode2,
     isAvailable: true,
     isVerified: false,
     registeredFrom: "labour",
   });
 
-  if (skills && skills.length > 0) {
+  const normalizedSkillIds = [...new Set(skills.map(Number))];
+  if (normalizedSkillIds.some((skillId) => !Number.isInteger(skillId) || skillId <= 0)) {
+    return { statusCode: 400, body: { success: false, message: "Legacy flow requires valid positive skill IDs" } };
+  }
+  if (normalizedSkillIds.length > 0) {
     await LabourSkill.bulkCreate(
-      skills.map((skillId) => ({ labourId: newLabour.id, skillId: Number(skillId) })),
+      normalizedSkillIds.map((skillId) => ({ labourId: newLabour.id, skillId })),
       { ignoreDuplicates: true }
     );
   }

@@ -710,7 +710,7 @@ const ensureSchema = async (db) => {
   // Migrate existing labours → labourProfiles
   try {
     await db.sequelize.query(`
-      INSERT INTO "labourProfiles" ("userId", "labourCode", "experienceYears", "isAvailable", "verificationStatus", "createdAt", "updatedAt")
+      INSERT INTO "labourProfiles" ("userId", "userCode", "experienceYears", "isAvailable", "verificationStatus", "createdAt", "updatedAt")
       SELECT
         l."userId",
         l."labourCode",

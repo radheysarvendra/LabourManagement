@@ -169,6 +169,7 @@ router.post("/api/contact-messages", (req, res) => {
 router.post("/api/auth/register", newAuthController.register);
 router.post("/api/profile/complete-owner", verifyToken, newAuthController.completeOwnerProfile);
 router.post("/api/profile/complete-labour", verifyToken, newAuthController.completeLabourProfile);
+router.put("/api/profile/labour/skills", verifyToken, newAuthController.completeLabourProfile);
 
 router.post("/auth/login", authController.login);
 router.post("/auth/login-password", authController.loginPassword);
