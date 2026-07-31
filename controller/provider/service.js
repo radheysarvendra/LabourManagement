@@ -507,6 +507,80 @@ const updateContractor = async (id, payload) => {
   return getContractorById(contractorUserId);
 };
 
+const updateMyContractorSkills = async (userId, payload = {}) => {
+  const contractorUserId = Number(userId);
+  if (!Number.isInteger(contractorUserId)) {
+    const error = new Error("Authenticated user is required");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const profile = await db.contractorProfile.findOne({ where: { userId: contractorUserId } });
+  if (!profile) {
+    const error = new Error("Contractor profile not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const normalizeIds = (values) => [...new Set(
+    (Array.isArray(values) ? values : [])
+      .map((value) => Number(value?.id ?? value?.skillId ?? value?.categoryId ?? value))
+      .filter(Number.isInteger)
+  )];
+  const skillIds = normalizeIds(payload.skillIds || payload.skills);
+  const categoryIds = normalizeIds(payload.categoryIds || payload.categories);
+
+  if (skillIds.length === 0) {
+    const error = new Error("At least one skillId is required");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (categoryIds.length === 0) {
+    const error = new Error("At least one categoryId is required");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const [validSkills, validCategories] = await Promise.all([
+    Skill.count({ where: { id: skillIds } }),
+    Category.count({ where: { id: categoryIds } }),
+  ]);
+  if (validSkills !== skillIds.length || validCategories !== categoryIds.length) {
+    const error = new Error("One or more skillIds/categoryIds are invalid");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const rates = payload.skillWages && typeof payload.skillWages === "object"
+    ? payload.skillWages
+    : {};
+  await db.sequelize.transaction(async (transaction) => {
+    await db.contractorSkill.destroy({ where: { contractorUserId }, transaction });
+    await db.contractorCategory.destroy({ where: { contractorUserId }, transaction });
+    await db.contractorSkill.bulkCreate(skillIds.map((skillId) => ({
+      contractorUserId,
+      skillId,
+      experienceYears: Number(payload.experienceYears) || 0,
+      rate: rates[skillId] ?? rates[String(skillId)] ?? null,
+    })), { transaction });
+    await db.contractorCategory.bulkCreate(categoryIds.map((categoryId) => ({
+      contractorUserId,
+      categoryId,
+    })), { transaction });
+    await profile.update({
+      experienceYears: payload.experienceYears ?? profile.experienceYears,
+    }, { transaction });
+
+    // Keep the legacy owner row in sync for screens that still read its primary values.
+    await Owner.update({
+      skillId: skillIds[0],
+      categoryId: categoryIds[0],
+    }, { where: { userId: contractorUserId, registeredFrom: "contractor" }, transaction });
+  });
+
+  return getContractorById(contractorUserId);
+};
+
 const updateContractorVerification = async (id, verificationStatus, adminId) => (
   updateContractor(id, { verificationStatus, verifiedByAdminId: adminId })
 );
@@ -740,6 +814,7 @@ module.exports = {
   countProviders,
   getContractorById,
   updateContractor,
+  updateMyContractorSkills,
   updateContractorVerification,
   updateContractorAvailability,
   ensureProviderAvailable,

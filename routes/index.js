@@ -170,6 +170,8 @@ router.post("/api/auth/register", newAuthController.register);
 router.post("/api/profile/complete-owner", verifyToken, newAuthController.completeOwnerProfile);
 router.post("/api/profile/complete-labour", verifyToken, newAuthController.completeLabourProfile);
 router.put("/api/profile/labour/skills", verifyToken, newAuthController.completeLabourProfile);
+router.get("/api/profile/contractor", verifyToken, providerController.getMyContractorProfile);
+router.put("/api/profile/contractor/skills", verifyToken, providerController.updateMyContractorSkills);
 
 router.post("/auth/login", authController.login);
 router.post("/auth/login-password", authController.loginPassword);
