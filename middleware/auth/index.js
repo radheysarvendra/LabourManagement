@@ -117,15 +117,17 @@ const saveToken = async (user, token, userType) => {
 const hashToken = (token) =>
   crypto.createHash("sha256").update(token).digest("hex").slice(0, 64);
 
-const generateSession = async (userId, roleCode) => {
+const generateSession = async (userId, roleCode, { requireCompletedRole = true } = {}) => {
   const appRole = await db.appRole.findOne({ where: { code: roleCode, isActive: true } });
   if (!appRole) throw new Error(`Unknown role code: ${roleCode}`);
-  const [user, userRole] = await Promise.all([
-    User.findOne({ where: { id: userId, accountStatus: "active" } }),
-    db.userRole.findOne({ where: { userId, roleId: appRole.id, profileStatus: "complete" } }),
-  ]);
+  const user = await User.findOne({ where: { id: userId, accountStatus: "active" } });
   if (!user) throw new Error("User account is not active");
-  if (!userRole) throw new Error(`Role ${roleCode} is unavailable or incomplete`);
+  if (requireCompletedRole) {
+    const userRole = await db.userRole.findOne({
+      where: { userId, roleId: appRole.id, profileStatus: "complete" },
+    });
+    if (!userRole) throw new Error(`Role ${roleCode} is unavailable or incomplete`);
+  }
 
   const sessionId = uuidv4();
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
@@ -198,6 +200,10 @@ const verifyOtpHash = (otp, savedHash) => {
 };
 
 const normalizeRoleCode = (role) => String(role || "").trim().toUpperCase();
+
+// Login identity comes only from the users row. registeredAs is session
+// metadata, not a role-selection step.
+const getLoginSessionRole = (user) => normalizeRoleCode(user?.registeredAs || "LABOUR");
 
 const buildStandardAuthResponse = ({
   token,
@@ -346,13 +352,9 @@ const requestOtp = async (req, res) => {
     }
 
     // New-flow check: does this phone have a users row with userRoles?
-    const globalUser = await User.findOne({
-      where: { phone },
-      include: [{ model: db.userRole, as: "userRoles", required: false,
-        include: [{ model: db.appRole, as: "appRole" }] }],
-    });
+    const globalUser = await User.findOne({ where: { phone } });
 
-    if (globalUser && globalUser.userRoles && globalUser.userRoles.length > 0) {
+    if (globalUser) {
       // New flow — send a single OTP (not per-role)
       await AuthOtp.destroy({ where: { phone } });
       const otp = generateOtp();
@@ -362,14 +364,14 @@ const requestOtp = async (req, res) => {
       await AuthOtp.create({ phone, userId: globalUser.id, otpHash, expiresAt, purpose: "login" });
       await sendSmsOtp(phone, otp);
 
-      const roles = globalUser.userRoles.map((ur) => ur.appRole?.code).filter(Boolean);
+      const roles = [getLoginSessionRole(globalUser)];
 
       const response = {
         success: true,
         message: "OTP sent successfully",
         isRegistered: true,
         roles,
-        requiresRoleSelection: roles.length > 1,
+        requiresRoleSelection: false,
         flow: "new",
       };
 
@@ -379,53 +381,12 @@ const requestOtp = async (req, res) => {
     }
 
     // Old flow fallback
-    const requestedUserType = req.body.userType;
-    const users = sortUsersByRolePriority(await findUsersByPhone(phone));
-    const selectedUser =
-      users.find((item) => item.userType === requestedUserType) || users[0];
-
-    if (!selectedUser) {
-      return res.status(200).send({
-        success: true,
-        isRegistered: false,
-        phone,
-        message: "User not registered. Please register first.",
-      });
-    }
-
-    await AuthOtp.destroy({ where: { phone } });
-    const otp = generateOtp();
-    const otpHash = hashOtp(otp);
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
-
-    await Promise.all(
-      users.map((item) =>
-        AuthOtp.create({
-          phone,
-          userId: item.user.id,
-          userType: item.userType,
-          otpHash,
-          expiresAt,
-          purpose: "login",
-        }).catch(() => {})
-      )
-    );
-
-    const response = {
+    return res.status(200).send({
       success: true,
-      message: "OTP sent successfully",
-      userType: selectedUser.userType,
-      type: selectedUser.userType,
-      roles: users.map((item) => item.userType),
-      requiresRoleSelection: users.length > 1 && !requestedUserType,
-      isRegistered: isProfileRegistered(selectedUser.user),
-      flow: "legacy",
-    };
-
-    await sendSmsOtp(phone, otp);
-    if (EXPOSE_TEST_OTP) response.testOtp = otp;
-
-    return res.status(200).send(response);
+      isRegistered: false,
+      phone,
+      message: "User not registered. Please register first.",
+    });
   } catch (err) {
     return res.status(500).send({ success: false, message: err.message });
   }
@@ -437,9 +398,6 @@ const verifyOtp = async (req, res) => {
   try {
     const phone = normalizePhone(req.body.phone);
     const otp = String(req.body.otp || "").trim();
-    // For new flow: activeRole = "LABOUR" | "OWNER" | "CONTRACTOR"
-    const activeRole = req.body.activeRole;
-    const requestedUserType = req.body.userType;
 
     if (phone.length !== 10 || !otp) {
       return res.status(400).send({ success: false, message: "Phone number and OTP are required" });
@@ -468,26 +426,15 @@ const verifyOtp = async (req, res) => {
       return res.status(400).send({ success: false, message: "Invalid OTP" });
     }
 
-    // New flow: user has a globalUser + userRoles, and activeRole is provided
-    const globalUser = await User.findOne({
-      where: { phone },
-      include: [{ model: db.userRole, as: "userRoles", required: false,
-        include: [{ model: db.appRole, as: "appRole" }] }],
-    });
+    // New flow: authenticate the users row and derive its registered role.
+    const globalUser = await User.findOne({ where: { phone } });
 
-    if (globalUser && globalUser.userRoles && globalUser.userRoles.length > 0) {
-      const roles = globalUser.userRoles.map((ur) => normalizeRoleCode(ur.appRole?.code)).filter(Boolean);
-      const selectedRole = activeRole || roles[0];
-
-      if (!roles.includes(selectedRole)) {
-        return res.status(400).send({
-          success: false,
-          message: `Role ${selectedRole} not available for this user. Available: ${roles.join(", ")}`,
-        });
-      }
+    if (globalUser) {
+      const selectedRole = getLoginSessionRole(globalUser);
+      const roles = [selectedRole];
 
       await otpRecord.update({ verifiedAt: new Date() });
-      const { token } = await generateSession(globalUser.id, selectedRole);
+      const { token } = await generateSession(globalUser.id, selectedRole, { requireCompletedRole: false });
 
       // Resolve legacy profile IDs so the app can use ownerId/labourId/contractorId
       const roleCode = normalizeRoleCode(selectedRole);
@@ -514,26 +461,7 @@ const verifyOtp = async (req, res) => {
     }
 
     // Old flow fallback — userType column no longer exists in authOtps; look up by phone
-    const effectiveUserType = requestedUserType || ROLE_TYPES.LABOUR;
-    const user = await getUserForRole(effectiveUserType, phone, true);
-
-    if (!user) {
-      return res.status(404).send({ success: false, message: "User not found" });
-    }
-
-    await otpRecord.update({ verifiedAt: new Date() });
-    const token = generateToken(user, effectiveUserType);
-    await saveToken(user, token, effectiveUserType);
-
-    const registeredUsers = sortUsersByRolePriority(await findUsersByPhone(phone));
-
-    return res.status(200).send(buildAuthResponse({
-      token,
-      user,
-      userType: effectiveUserType,
-      roles: registeredUsers.map((item) => item.userType),
-      flow: "legacy",
-    }));
+    return res.status(404).send({ success: false, message: "User not found" });
   } catch (err) {
     return res.status(500).send({ success: false, message: err.message });
   }
@@ -573,6 +501,10 @@ const switchRole = async (req, res) => {
       await req.session.update({ revokedAt: new Date() });
     }
 
+    await User.update(
+      { registeredAs: String(activeRole).toLowerCase() },
+      { where: { id: userId } }
+    );
     const { token } = await generateSession(userId, activeRole);
 
     return res.status(200).send({
@@ -677,15 +609,11 @@ const checkPhone = async (req, res) => {
     }
 
     // New flow check
-    const globalUser = await User.findOne({
-      where: { phone },
-      include: [{ model: db.userRole, as: "userRoles", required: false,
-        include: [{ model: db.appRole, as: "appRole" }] }],
-    });
+    const globalUser = await User.findOne({ where: { phone } });
 
-    if (globalUser && globalUser.userRoles && globalUser.userRoles.length > 0) {
-      const roles = globalUser.userRoles.map((ur) => ur.appRole?.code).filter(Boolean);
-      const primaryRole = roles[0] || null;
+    if (globalUser) {
+      const primaryRole = getLoginSessionRole(globalUser);
+      const roles = [primaryRole];
       const userType = primaryRole ? primaryRole.toLowerCase() : null;
       return res.status(200).send({
         success: true,
@@ -701,32 +629,13 @@ const checkPhone = async (req, res) => {
     }
 
     // Old flow fallback
-    const users = sortUsersByRolePriority(await findUsersByPhone(phone));
-
-    if (users.length === 0) {
-      return res.status(200).send({
-        success: true,
-        exists: false,
-        isRegistered: false,
-        phone,
-        userType: null,
-        message: "User not registered. Registration required.",
-      });
-    }
-
-    const primary = users[0];
-
     return res.status(200).send({
       success: true,
-      exists: true,
-      isRegistered: true,
+      exists: false,
+      isRegistered: false,
       phone,
-      userId: primary.user.id,
-      userType: primary.userType,
-      registeredFrom: primary.user.registeredFrom || primary.userType,
-      roles: users.map((item) => item.userType),
-      flow: "legacy",
-      message: "User is already registered",
+      userType: null,
+      message: "User not registered. Registration required.",
     });
   } catch (err) {
     return res.status(500).send({ success: false, message: err.message });
@@ -737,17 +646,12 @@ const loginPassword = async (req, res) => {
   try {
     const phone = normalizePhone(req.body.phone);
     const password = String(req.body.password || "");
-    const activeRole = normalizeRoleCode(req.body.activeRole || req.body.userType || req.body.role);
 
     if (phone.length !== 10 || !password) {
       return res.status(400).send({ success: false, message: "Phone and password are required" });
     }
 
-    const globalUser = await User.findOne({
-      where: { phone },
-      include: [{ model: db.userRole, as: "userRoles", required: false,
-        include: [{ model: db.appRole, as: "appRole" }] }],
-    });
+    const globalUser = await User.findOne({ where: { phone } });
 
     if (!globalUser) {
       return res.status(404).send({ success: false, message: "User not found." });
@@ -763,17 +667,10 @@ const loginPassword = async (req, res) => {
       }
     }
 
-    const roles = (globalUser.userRoles || []).map((ur) => normalizeRoleCode(ur.appRole?.code)).filter(Boolean);
-    const selectedRole = activeRole || (roles.length === 1 ? roles[0] : null);
+    const selectedRole = getLoginSessionRole(globalUser);
+    const roles = [selectedRole];
 
-    if (!selectedRole) {
-      return res.status(400).send({
-        success: false,
-        message: `Select one active role. Available roles: ${roles.join(", ")}`,
-      });
-    }
-
-    const { token } = await generateSession(globalUser.id, selectedRole);
+    const { token } = await generateSession(globalUser.id, selectedRole, { requireCompletedRole: false });
     const roleCode = normalizeRoleCode(selectedRole);
     let labourId = null;
     let ownerId = null;
