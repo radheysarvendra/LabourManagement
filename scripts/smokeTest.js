@@ -143,6 +143,7 @@ async function testUserRegistration() {
   let r = await req("POST", "/api/auth/register", {
     name:   "Smoke Test Labour",
     phone,
+    password: "Test@123",
     role:   "labour",
     age:    24,
     gender: "male",

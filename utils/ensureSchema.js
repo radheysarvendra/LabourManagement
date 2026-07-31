@@ -707,13 +707,20 @@ const ensureSchema = async (db) => {
     console.warn("appRoles seeding skipped:", e.message);
   }
 
+  // Ensure labourProfiles uses the unified userCode column
+  await ensureColumn(queryInterface, "labourProfiles", "userCode", {
+    type: db.Sequelize.STRING,
+    allowNull: true,
+    unique: true,
+  });
+
   // Migrate existing labours → labourProfiles
   try {
     await db.sequelize.query(`
       INSERT INTO "labourProfiles" ("userId", "userCode", "experienceYears", "isAvailable", "verificationStatus", "createdAt", "updatedAt")
       SELECT
         l."userId",
-        l."labourCode",
+        COALESCE(l."userCode", l."labourCode"),
         COALESCE(l."experienceYears", 0),
         COALESCE(l."isAvailable", true),
         CASE WHEN COALESCE(l."isVerified", false) THEN 'verified' ELSE 'pending' END,

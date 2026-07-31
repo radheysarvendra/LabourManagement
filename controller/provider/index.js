@@ -54,6 +54,30 @@ const updateContractor = async (req, res) => {
   }
 };
 
+const getMyContractorProfile = async (req, res) => {
+  try {
+    const result = await providerService.getContractorById(req.user?.userId || req.user?.id);
+    return res.status(200).send(result);
+  } catch (err) {
+    return res.status(err.statusCode || 500).send({ success: false, message: err.message });
+  }
+};
+
+const updateMyContractorSkills = async (req, res) => {
+  try {
+    const result = await providerService.updateMyContractorSkills(
+      req.user?.userId || req.user?.id,
+      req.body
+    );
+    return res.status(200).send({
+      ...result,
+      message: "Contractor categories and skills updated successfully",
+    });
+  } catch (err) {
+    return res.status(err.statusCode || 500).send({ success: false, message: err.message });
+  }
+};
+
 const approveContractor = async (req, res) => {
   try {
     const result = await providerService.updateContractorVerification(req.params.id, "verified", req.admin?.id || null);
@@ -96,6 +120,8 @@ module.exports = {
   listContractors,
   getContractorById,
   updateContractor,
+  getMyContractorProfile,
+  updateMyContractorSkills,
   approveContractor,
   rejectContractor,
   updateContractorAvailability,

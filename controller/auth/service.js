@@ -36,6 +36,8 @@ const registerService = async (payload) => {
     password,
     role,
     skills,
+    skillWages,
+    experienceYears,
     age,
     gender,
     city,
@@ -92,7 +94,7 @@ const registerService = async (payload) => {
   }
 
   // Wrap in transaction — if profile creation fails, user row is rolled back
-  const { user, profileRecord, appRoleCode } = await db.sequelize.transaction(async (t) => {
+  const { user, profileRecord, appRoleCode, savedSkills } = await db.sequelize.transaction(async (t) => {
     const newUser = await User.create({
       name,
       phone: normalizedPhone,
@@ -116,8 +118,53 @@ const registerService = async (payload) => {
 
     let newProfile = null;
     let userCode = null;
+    let savedSkills = [];
 
     if (role === "labour") {
+      const normalizedSkillIds = [...new Set(skills.map(Number))];
+      if (normalizedSkillIds.some((id) => !Number.isInteger(id) || id <= 0)) {
+        const error = new Error("skills must contain valid positive skill IDs");
+        error.statusCode = 400;
+        throw error;
+      }
+      const skillRows = await db.skill.findAll({
+        where: { id: { [db.Sequelize.Op.in]: normalizedSkillIds }, isActive: true },
+        transaction: t,
+      });
+      if (skillRows.length !== normalizedSkillIds.length) {
+        const error = new Error("One or more skill IDs are invalid or inactive");
+        error.statusCode = 400;
+        throw error;
+      }
+      const wageForSkill = (skill) => {
+        if (Array.isArray(skillWages)) {
+          const match = skillWages.find((item) =>
+            Number(item?.skillId) === Number(skill.id) ||
+            String(item?.skill || item?.skillName || "").trim().toLowerCase() === String(skill.skillName).trim().toLowerCase()
+          );
+          return match?.dailyWage ?? match?.wage;
+        }
+        if (skillWages && typeof skillWages === "object") {
+          return skillWages[skill.skillName] ?? skillWages[skill.id];
+        }
+        return undefined;
+      };
+      const resolvedSkills = skillRows
+        .sort((a, b) => normalizedSkillIds.indexOf(Number(a.id)) - normalizedSkillIds.indexOf(Number(b.id)))
+        .map((skill, index) => ({
+          skillId: Number(skill.id),
+          skillName: skill.skillName,
+          dailyWage: Number(wageForSkill(skill) ?? skill.defaultWage ?? 0),
+          experienceYears: Number(experienceYears ?? 0),
+          isPrimary: index === 0,
+        }));
+      savedSkills = resolvedSkills;
+      if (resolvedSkills.some((item) => !Number.isFinite(item.dailyWage) || item.dailyWage < 0 || !Number.isFinite(item.experienceYears) || item.experienceYears < 0)) {
+        const error = new Error("Skill wage and experience must be valid non-negative numbers");
+        error.statusCode = 400;
+        throw error;
+      }
+
       // Generate unique LAB-XXXXXX code before creating the record
       for (let i = 0; i < 8; i++) {
         const code = `LAB-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -131,6 +178,7 @@ const registerService = async (payload) => {
         labourCode: userCode,
         isAvailable: true,
         isVerified: false,
+        experienceYears: Number(experienceYears ?? 0),
         registeredFrom: "labour",
       }, { transaction: t });
 
@@ -138,17 +186,22 @@ const registerService = async (payload) => {
       await db.labourProfile.create({
         userId: newUser.id,
         userCode,
-        experienceYears: 0,
+        experienceYears: Number(experienceYears ?? 0),
         isAvailable: true,
         verificationStatus: "pending",
       }, { transaction: t });
 
-      if (skills && skills.length > 0) {
-        await LabourSkill.bulkCreate(
-          skills.map((skillId) => ({ labourUserId: newUser.id, labourId: newProfile.id, skillId: Number(skillId) })),
-          { transaction: t, ignoreDuplicates: true }
-        );
-      }
+      await LabourSkill.bulkCreate(
+        resolvedSkills.map((item) => ({
+          labourUserId: newUser.id,
+          labourId: newProfile.id,
+          skillId: item.skillId,
+          dailyWage: item.dailyWage,
+          experienceYears: item.experienceYears,
+          isPrimary: item.isPrimary,
+        })),
+        { transaction: t }
+      );
     } else {
       newProfile = await Owner.create({
         userId: newUser.id,
@@ -190,7 +243,7 @@ const registerService = async (payload) => {
       }, { transaction: t });
     }
 
-      return { user: newUser, profileRecord: newProfile, appRoleCode, userCode };
+      return { user: newUser, profileRecord: newProfile, appRoleCode, userCode, savedSkills };
   });
 
   const { token } = await generateSession(user.id, appRoleCode);
@@ -216,6 +269,11 @@ const registerService = async (payload) => {
       },
       profile: profileRecord,
       userCode: profileRecord.labourCode || null,
+      skills: role === "labour" ? savedSkills : [],
+      skillIds: role === "labour" ? savedSkills.map((item) => item.skillId) : [],
+      skillWages: role === "labour"
+        ? Object.fromEntries(savedSkills.map((item) => [item.skillName, item.dailyWage]))
+        : {},
       roles: [role],
       isRegistered: true,
     },
@@ -228,6 +286,7 @@ const completeOwnerProfileService = async ({ userId, userType, isSessionAuth, wo
     const globalUser = await User.findByPk(userId);
     if (!globalUser) return { statusCode: 404, body: { success: false, message: "User not found" } };
     const owner = await db.sequelize.transaction(async (transaction) => {
+      await globalUser.update({ registeredAs: "owner" }, { transaction });
       const [legacyOwner] = await Owner.findOrCreate({
         where: { userId: globalUser.id },
         defaults: {
@@ -369,7 +428,7 @@ const completeLabourProfileService = async ({ userId, userType, isSessionAuth, s
         });
       }
 
-      const userUpdate = {};
+      const userUpdate = { registeredAs: "labour" };
       if (resolvedAge) userUpdate.age = Number(resolvedAge);
       if (resolvedGender) userUpdate.gender = resolvedGender;
       if (city !== undefined) userUpdate.city = city;
