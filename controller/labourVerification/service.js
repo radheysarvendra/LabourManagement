@@ -1,8 +1,7 @@
 const db         = require("../../model/index.js");
 const cloudinary  = require("../../utils/cloudinary");
 
-const LabourProfile = db.userVerification || db.labourProfile;
-const Labour        = db.labour;
+const Verification   = db.userVerification;
 const User          = db.user;
 const Admin         = db.admin;
 
@@ -37,29 +36,20 @@ const submitVerificationService = async ({ userId, labourId, aadharNumber, docum
     return forbidden("Authentication required");
   }
 
-  let profile = await LabourProfile.findOne({ where: { userId: resolvedUserId } });
-  if (!profile) {
-    const labour = await Labour.findOne({ where: { userId: resolvedUserId } });
-    if (!labour) return notFound("Labour profile not found. Complete your profile first.");
+  const user = await User.findByPk(resolvedUserId, { attributes: ["id"] });
+  if (!user) return notFound("User not found");
 
-    [profile] = await LabourProfile.findOrCreate({
-      where: { userId: resolvedUserId },
-      defaults: {
-        userId: resolvedUserId,
-        userCode: labour.labourCode || null,
-        experienceYears: labour.experienceYears || 0,
-        isAvailable: labour.isAvailable !== false,
-        verificationStatus: labour.isVerified ? "verified" : "pending",
-      },
-    });
-  }
+  const [profile] = await Verification.findOrCreate({
+    where: { userId: resolvedUserId },
+    defaults: { userId: resolvedUserId, verificationStatus: "NOT_UPLOADED" },
+  });
 
   // Locked after admin approval — cannot re-submit
   if (profile.isLocked) {
     return forbidden("Your verification is locked. Documents cannot be changed after approval. Contact admin to unlock.");
   }
 
-  if (profile.verificationStatus === "verified") {
+  if (String(profile.verificationStatus).toUpperCase() === "VERIFIED") {
     return bad("Your profile is already verified");
   }
 
@@ -77,7 +67,8 @@ const submitVerificationService = async ({ userId, labourId, aadharNumber, docum
     await cloudinary.uploader.destroy(profile.photoCloudinaryPublicId).catch(() => {});
   }
 
-  const nextStatus = "pending";
+  const nextStatus = "PENDING_REVIEW";
+  const submittedAt = new Date();
 
   await profile.update({
     aadharNumber:            cleanAadhar                         || profile.aadharNumber,
@@ -87,13 +78,13 @@ const submitVerificationService = async ({ userId, labourId, aadharNumber, docum
     photoCloudinaryPublicId: photoCloudinaryPublicId             || profile.photoCloudinaryPublicId,
     verificationStatus:      nextStatus,
     rejectionReason:         null,
-    verificationSubmittedAt: new Date(),
+    verificationSubmittedAt: submittedAt,
   });
 
   return ok(
     {
       verificationStatus:      normalizeVerificationStatus(nextStatus),
-      verificationSubmittedAt: new Date(),
+      verificationSubmittedAt: submittedAt,
     },
     "Document uploaded successfully. Your document is under review. Admin will review it within 24–48 hours."
   );
@@ -102,20 +93,29 @@ const submitVerificationService = async ({ userId, labourId, aadharNumber, docum
 // ── get own verification status ───────────────────────────────────────────────
 
 const getMyVerificationStatusService = async (userId) => {
-  if (!userId) return notFound("User verification record not found");
+  if (!userId) return forbidden("Authentication required");
 
-  const profile = await LabourProfile.findOne({
+  const user = await User.findByPk(userId, { attributes: ["id"] });
+  if (!user) return notFound("User not found");
+
+  const profile = await Verification.findOne({
     where: { userId },
     attributes: [
-      "userId", "userCode", "verificationStatus",
+      "userId", "verificationStatus",
     "verificationSubmittedAt", "verifiedAt", "rejectionReason",
       "aadharNumber", "documentUrl", "photoUrl", "isLocked",
     ],
   });
 
-  if (!profile) return notFound("Labour profile not found");
+  if (!profile) return ok({
+    userId: Number(userId),
+    verificationStatus: "NOT_UPLOADED",
+    statusMessage: "No identity document has been uploaded yet.",
+    isLocked: false,
+  });
 
   const statusMessages = {
+    pending_review: "Your documents have been submitted successfully. Admin review usually takes 24-48 hours.",
     pending:  "Your documents have been submitted successfully. Admin review usually takes 24–48 hours.",
     verified: "Your identity verification is approved.",
     rejected: `Your document was rejected. Please upload again.${profile.rejectionReason ? ` Reason: ${profile.rejectionReason}` : ""}`,
@@ -133,27 +133,23 @@ const getMyVerificationStatusService = async (userId) => {
 
 const getVerificationsService = async ({ verificationStatus, userId, page = 1, limit = 20 }) => {
   const where = {};
-  if (verificationStatus) where.verificationStatus = String(verificationStatus).toLowerCase() === "pending_review"
-    ? "pending"
-    : String(verificationStatus).toLowerCase() === "verified"
-      ? "verified"
-      : String(verificationStatus).toLowerCase();
+  if (verificationStatus) where.verificationStatus = normalizeVerificationStatus(verificationStatus);
   if (userId)             where.userId             = userId;
 
   const offset = (Number(page) - 1) * Number(limit);
 
   // Accurate summary counts across ALL records, not just the current page
   const [pendingCount, verifiedCount, rejectedCount, { count, rows }] = await Promise.all([
-    LabourProfile.count({ where: { verificationStatus: "pending" } }),
-    LabourProfile.count({ where: { verificationStatus: "verified" } }),
-    LabourProfile.count({ where: { verificationStatus: "rejected" } }),
-    LabourProfile.findAndCountAll({
+    Verification.count({ where: { verificationStatus: "PENDING_REVIEW" } }),
+    Verification.count({ where: { verificationStatus: "VERIFIED" } }),
+    Verification.count({ where: { verificationStatus: "REJECTED" } }),
+    Verification.findAndCountAll({
       where,
       include: [
         { model: User, as: "user", attributes: ["id", "name", "phone"] },
       ],
       attributes: [
-        "userId", "userCode", "verificationStatus",
+        "userId", "verificationStatus",
         "verificationSubmittedAt", "verifiedAt", "rejectionReason",
         "aadharNumber", "documentUrl", "photoUrl", "isLocked",
       ],
@@ -172,11 +168,11 @@ const getVerificationsService = async ({ verificationStatus, userId, page = 1, l
 // ── admin: approve verification ───────────────────────────────────────────────
 
 const approveVerificationService = async (labourUserId, adminId) => {
-  const profile = await LabourProfile.findOne({ where: { userId: labourUserId } });
-  if (!profile) return notFound("Labour profile not found");
+  const profile = await Verification.findOne({ where: { userId: labourUserId } });
+  if (!profile) return notFound("User verification not found");
 
-  if (profile.verificationStatus === "verified") return bad("Already verified");
-  if (profile.verificationStatus !== "pending")  return bad("No pending verification request found");
+  if (profile.verificationStatus === "VERIFIED") return bad("Already verified");
+  if (profile.verificationStatus !== "PENDING_REVIEW") return bad("No pending verification request found");
 
   // Move Cloudinary files from dihadii/temp/ → dihadii/verified/
   const moveToVerified = async (publicId, currentUrl) => {
@@ -197,7 +193,7 @@ const approveVerificationService = async (labourUserId, adminId) => {
   ]);
 
   await profile.update({
-    verificationStatus:      "verified",
+    verificationStatus:      "VERIFIED",
     verifiedByAdminId:       adminId || null,
     verifiedAt:              new Date(),
     rejectionReason:         null,
@@ -209,13 +205,12 @@ const approveVerificationService = async (labourUserId, adminId) => {
   });
 
   // Sync isVerified flag on the labours table for fast filtering
-  await Labour.update({ isVerified: true }, { where: { userId: labourUserId } });
 
   const user = await User.findByPk(labourUserId, { attributes: ["id", "name", "phone"] });
 
   return ok(
     { profile, user },
-    `Labour ${user?.name || labourUserId} has been verified successfully`
+    `User ${user?.name || labourUserId} has been verified successfully`
   );
 };
 
@@ -224,11 +219,11 @@ const approveVerificationService = async (labourUserId, adminId) => {
 const rejectVerificationService = async (labourUserId, { rejectionReason, adminId } = {}) => {
   if (!rejectionReason) return bad("rejectionReason is required when rejecting");
 
-  const profile = await LabourProfile.findOne({ where: { userId: labourUserId } });
-  if (!profile) return notFound("Labour profile not found");
+  const profile = await Verification.findOne({ where: { userId: labourUserId } });
+  if (!profile) return notFound("User verification not found");
 
-  if (profile.verificationStatus === "verified") return bad("Cannot reject an already verified profile");
-  if (profile.verificationStatus !== "pending")  return bad("No pending verification request found");
+  if (profile.verificationStatus === "VERIFIED") return bad("Cannot reject an already verified profile");
+  if (profile.verificationStatus !== "PENDING_REVIEW") return bad("No pending verification request found");
 
   // Delete both document and photo from Cloudinary temp folder
   await Promise.allSettled([
@@ -241,7 +236,7 @@ const rejectVerificationService = async (labourUserId, { rejectionReason, adminI
   ]);
 
   await profile.update({
-    verificationStatus:      "rejected",
+    verificationStatus:      "REJECTED",
     rejectionReason,
     verifiedByAdminId:       adminId || null,
     verifiedAt:              null,
@@ -252,7 +247,6 @@ const rejectVerificationService = async (labourUserId, { rejectionReason, adminI
   });
 
   // Sync isVerified flag — rejected labour is not verified
-  await Labour.update({ isVerified: false }, { where: { userId: labourUserId } });
 
   const user = await User.findByPk(labourUserId, { attributes: ["id", "name", "phone"] });
 
@@ -265,13 +259,13 @@ const rejectVerificationService = async (labourUserId, { rejectionReason, adminI
 // ── admin: revoke verification (revert to pending) ────────────────────────────
 
 const revokeVerificationService = async (labourUserId) => {
-  const profile = await LabourProfile.findOne({ where: { userId: labourUserId } });
-  if (!profile) return notFound("Labour profile not found");
+  const profile = await Verification.findOne({ where: { userId: labourUserId } });
+  if (!profile) return notFound("User verification not found");
 
-  if (profile.verificationStatus !== "verified") return bad("Profile is not currently verified");
+  if (profile.verificationStatus !== "VERIFIED") return bad("Profile is not currently verified");
 
   await profile.update({
-    verificationStatus: "pending",
+    verificationStatus: "PENDING_REVIEW",
     verifiedByAdminId:  null,
     verifiedAt:         null,
     rejectionReason:    null,
@@ -279,7 +273,6 @@ const revokeVerificationService = async (labourUserId) => {
   });
 
   // Sync isVerified flag — revoked labour is no longer verified
-  await Labour.update({ isVerified: false }, { where: { userId: labourUserId } });
 
   return ok(profile, "Verification revoked. Profile set back to pending.");
 };

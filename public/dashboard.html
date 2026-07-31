@@ -116,7 +116,7 @@
     </div>
 
     <!-- Section heading -->
-    <h2 class="text-base font-black text-gray-700 mb-3">Labour Verification</h2>
+    <h2 class="text-base font-black text-gray-700 mb-3">User Identity Verification</h2>
 
     <!-- Tabs -->
     <div class="flex gap-2 mb-4 flex-wrap">
@@ -227,11 +227,14 @@
 
     // ── Card builder ───────────────────────────────────────────────────────────
     function buildCard(v) {
-      const status     = v.verificationStatus || 'pending';
+      const rawStatus  = String(v.verificationStatus || 'PENDING_REVIEW').toUpperCase();
+      const status     = rawStatus === 'PENDING_REVIEW' || rawStatus === 'PENDING'
+        ? 'pending'
+        : rawStatus.toLowerCase();
       const isVerified = status === 'verified';
-      const name       = v.user?.name   || 'Unknown Labour';
+      const name       = v.user?.name   || 'Unknown User';
       const phone      = v.user?.phone  || '—';
-      const code       = v.labourCode   || '—';
+      const code       = v.userId || '—';
       const aadhar     = v.aadharNumber || '—';
       const submittedAt = v.verificationSubmittedAt
         ? new Date(v.verificationSubmittedAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
@@ -263,7 +266,7 @@
             <div class="flex-1 min-w-0 mr-2">
               <p class="font-black text-gray-800 text-sm truncate">${name}</p>
               <p class="text-gray-400 text-xs font-semibold">${phone}</p>
-              <p class="text-gray-300 text-xs font-semibold">ID: ${code}</p>
+              <p class="text-gray-300 text-xs font-semibold">User ID: ${code}</p>
             </div>
             <div class="flex flex-col items-end gap-1 shrink-0">
               <span class="text-xs font-bold px-2.5 py-1 rounded-full badge-${status}">${statusLabel}</span>
@@ -315,7 +318,7 @@
 
     // ── Actions ────────────────────────────────────────────────────────────────
     async function approveLabour(userId) {
-      if (!confirm('Approve this labour? isVerified will be set to TRUE.')) return;
+      if (!confirm('Approve this user identity verification?')) return;
       const res  = await fetch(`/api/admin/labour-verifications/${userId}/approve`, { method: 'PUT', headers: auth() });
       const data = await res.json();
       if (res.ok) {

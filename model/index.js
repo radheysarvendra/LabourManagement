@@ -128,7 +128,7 @@ db.contractorProfile = require("./contractorProfile")(sequelize, DataTypes);
 db.contractorSkill = require("./contractorSkill")(sequelize, DataTypes);
 db.contractorCategory = require("./contractorCategory")(sequelize, DataTypes);
 db.session = require("./session")(sequelize, DataTypes);
-db.userVerification = db.labourProfile;
+db.userVerification = require("./userVerification")(sequelize, DataTypes);
 db.orderAssignment = require("./orderAssignment")(sequelize, DataTypes);
 db.labourAssignmentDetail = require("./labourAssignmentDetail")(sequelize, DataTypes);
 db.contractorAssignmentDetail = require("./contractorAssignmentDetail")(sequelize, DataTypes);
@@ -554,6 +554,10 @@ db.userRole.belongsTo(db.appRole, { foreignKey: "roleId", as: "appRole" });
 // user ↔ labourProfile
 db.user.hasOne(db.labourProfile, { foreignKey: "userId", as: "newLabourProfile", onDelete: "CASCADE" });
 db.labourProfile.belongsTo(db.user, { foreignKey: "userId", as: "user" });
+
+// user ↔ verification (one individual identity, independent of every role)
+db.user.hasOne(db.userVerification, { foreignKey: "userId", as: "verification", onDelete: "CASCADE" });
+db.userVerification.belongsTo(db.user, { foreignKey: "userId", as: "user" });
 
 // user ↔ contractorProfile
 db.user.hasOne(db.contractorProfile, { foreignKey: "userId", as: "contractorProfile", onDelete: "CASCADE" });

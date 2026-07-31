@@ -15,7 +15,7 @@ const upload = multer({
 
 // Middleware: upload buffer → Cloudinary, attach result to req.cloudinaryResult
 upload.uploadToCloudinary = (folder = "dihadii/temp") =>
-  async (req, _res, next) => {
+  async (req, res, next) => {
     if (!req.file) return next();
     try {
       const result = await new Promise((resolve, reject) => {
@@ -33,7 +33,14 @@ upload.uploadToCloudinary = (folder = "dihadii/temp") =>
       req.cloudinaryResult = result; // { secure_url, public_id, ... }
       next();
     } catch (err) {
-      next(err);
+      const message =
+        err?.message ||
+        err?.error?.message ||
+        (typeof err === "string" ? err : "Cloudinary upload failed");
+      return res.status(Number(err?.http_code) || 502).json({
+        success: false,
+        message,
+      });
     }
   };
 

@@ -387,7 +387,7 @@ const getPermissionMatrix = async (req, res) => {
 
 const getDashboardStats = async (req, res) => {
   try {
-    const LabourProfile = db.labourProfile;
+    const UserVerification = db.userVerification;
     const [
       labours, owners, totalOrders, pendingOrders, approvedOrders, bookings,
       verifiedLabours, pendingVerifications, rejectedVerifications,
@@ -398,9 +398,9 @@ const getDashboardStats = async (req, res) => {
       Order.count({ where: { adminStatus: "pending" } }),
       Order.count({ where: { adminStatus: "approved" } }),
       Booking.count(),
-      Labour.count({ where: { isVerified: true } }),
-      LabourProfile.count({ where: { verificationStatus: "pending" } }),
-      LabourProfile.count({ where: { verificationStatus: "rejected" } }),
+      UserVerification.count({ where: { verificationStatus: "VERIFIED" } }),
+      UserVerification.count({ where: { verificationStatus: "PENDING_REVIEW" } }),
+      UserVerification.count({ where: { verificationStatus: "REJECTED" } }),
     ]);
 
     return res.status(200).send({
@@ -846,10 +846,10 @@ const getGlobalSearch = async (req, res) => {
 const getNotifications = async (_req, res) => {
   try {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const LabourProfile = db.labourProfile;
+    const UserVerification = db.userVerification;
     const [pendingOrders, pendingLabourVerifications, failedWorkPayments, failedOrderPayments, newBookings, newOrders] = await Promise.all([
       Order.count({ where: { adminStatus: "pending" } }),
-      LabourProfile.count({ where: { verificationStatus: "pending" } }).catch(() => Labour.count({ where: { isVerified: false } })),
+      UserVerification.count({ where: { verificationStatus: "PENDING_REVIEW" } }),
       db.workPayment.count({ where: { paymentStatus: { [Op.in]: ["failed", "cancelled"] } } }).catch(() => 0),
       db.orderPayment.count({ where: { status: { [Op.in]: ["failed", "cancelled"] } } }).catch(() => 0),
       Booking.count({ where: { createdAt: { [Op.gte]: since } } }),

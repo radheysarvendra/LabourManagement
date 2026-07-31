@@ -269,6 +269,9 @@ router.post(
 router.post("/api/labour/verification/submit",   verifyToken, labourVerificationController.submitVerification);
 router.post("/api/labour/upload-docs",           verifyToken, labourVerificationController.submitVerification);
 router.get("/api/labour/verification/status",    verifyToken, labourVerificationController.getMyVerificationStatus);
+// Role-independent identity verification (legacy labour URLs above remain compatible)
+router.post("/api/user/verification/submit",      verifyToken, labourVerificationController.submitVerification);
+router.get("/api/user/verification/status",       verifyToken, labourVerificationController.getMyVerificationStatus);
 // Admin
 router.get("/api/admin/labour-verifications",                       verifyAdminToken, labourVerificationController.getVerifications);
 router.put("/api/admin/labour-verifications/:userId/approve",       verifyAdminToken, labourVerificationController.approveVerification);

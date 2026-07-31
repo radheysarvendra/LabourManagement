@@ -35,6 +35,16 @@ app.get("/auth/login",       (_req, res) => res.sendFile(path.join(__dirname, "p
 const routes = require("./routes");
 app.use("", routes);
 
+// Keep API failures machine-readable, including Multer file type/size errors.
+app.use((err, _req, res, _next) => {
+  const isFileSizeError = err?.code === "LIMIT_FILE_SIZE";
+  const status = isFileSizeError ? 413 : Number(err?.status || err?.statusCode) || 400;
+  return res.status(status).json({
+    success: false,
+    message: isFileSizeError ? "File size must not exceed 5 MB" : err?.message || "Request failed",
+  });
+});
+
 const runStartupTasks = async () => {
   if (!shouldRunStartupSeeds) {
     console.log("Startup seeding skipped (RUN_STARTUP_SEEDS=false)");
