@@ -172,7 +172,7 @@ const searchNewContractors = async ({
     stateId, districtId, pincodeId, postOfficeId,
     state, district, pincode, postOffice,
   });
-  const hasLocationFilter = Object.keys(locationWhere).length > 0;
+  const hasLocationFilter = Reflect.ownKeys(locationWhere).length > 0;
 
   // Cross-table search: name/phone on user, companyName on profile
   if (search) {
@@ -515,12 +515,13 @@ const updateMyContractorSkills = async (userId, payload = {}) => {
     throw error;
   }
 
-  const profile = await db.contractorProfile.findOne({ where: { userId: contractorUserId } });
-  if (!profile) {
-    const error = new Error("Contractor profile not found");
+  const user = await User.findByPk(contractorUserId, { attributes: ["id"] });
+  if (!user) {
+    const error = new Error("User not found");
     error.statusCode = 404;
     throw error;
   }
+  let profile = await db.contractorProfile.findOne({ where: { userId: contractorUserId } });
 
   const normalizeIds = (values) => [...new Set(
     (Array.isArray(values) ? values : [])
@@ -555,6 +556,18 @@ const updateMyContractorSkills = async (userId, payload = {}) => {
     ? payload.skillWages
     : {};
   await db.sequelize.transaction(async (transaction) => {
+    if (!profile) {
+      [profile] = await db.contractorProfile.findOrCreate({
+        where: { userId: contractorUserId },
+        defaults: {
+          userId: contractorUserId,
+          experienceYears: Number(payload.experienceYears) || 0,
+          isAvailable: true,
+          verificationStatus: "pending",
+        },
+        transaction,
+      });
+    }
     await db.contractorSkill.destroy({ where: { contractorUserId }, transaction });
     await db.contractorCategory.destroy({ where: { contractorUserId }, transaction });
     await db.contractorSkill.bulkCreate(skillIds.map((skillId) => ({

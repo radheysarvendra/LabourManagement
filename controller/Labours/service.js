@@ -490,24 +490,38 @@ const buildUserLocationWhere = (location, ids) => {
   }
   if (location.district) {
     conditions.push({
-      ...(ids.districtId ? { districtId: Number(ids.districtId) } : { district: { [Op.iLike]: location.district } }),
+      [Op.or]: [
+        ...(ids.districtId ? [{ districtId: Number(ids.districtId) }] : []),
+        { district: { [Op.iLike]: location.district } },
+      ],
     });
   }
   if (location.pincode) {
     conditions.push({
-      ...(ids.pincodeId ? { pincodeId: Number(ids.pincodeId) } : { pincode: location.pincode }),
+      [Op.or]: [
+        ...(ids.pincodeId ? [{ pincodeId: Number(ids.pincodeId) }] : []),
+        { pincode: location.pincode },
+      ],
     });
   }
   if (location.postOffice) {
     conditions.push({
-      ...(ids.postOfficeId ? { postOfficeId: Number(ids.postOfficeId) } : { postOffice: { [Op.iLike]: location.postOffice } }),
+      [Op.or]: [
+        ...(ids.postOfficeId ? [{ postOfficeId: Number(ids.postOfficeId) }] : []),
+        { postOffice: { [Op.iLike]: location.postOffice } },
+      ],
     });
   }
   return conditions.length ? { [Op.and]: conditions } : {};
 };
 
-const resolveSearchLocation = async ({ stateId, districtId, pincodeId, postOfficeId, pincode, district }) => {
-  const location = { state: null, district: district || null, pincode: pincode || null, postOffice: null };
+const resolveSearchLocation = async ({ stateId, districtId, pincodeId, postOfficeId, state, pincode, district, postOffice }) => {
+  const location = {
+    state: state || null,
+    district: district || null,
+    pincode: pincode || null,
+    postOffice: postOffice || null,
+  };
 
   if (stateId) {
     const stateData = await State.findOne({ where: { id: stateId } });
@@ -521,7 +535,12 @@ const resolveSearchLocation = async ({ stateId, districtId, pincodeId, postOffic
     const pincodeData = await Pincode.findOne({ where: { id: pincodeId } });
     location.pincode = pincodeData?.pincode || location.pincode;
   } else if (pincode) {
-    const pincodeDetails = await getLocationData({ pincode, district: location.district });
+    const pincodeDetails = await getLocationData({
+      pincode,
+      district: location.district,
+      state: location.state,
+      postOffice: location.postOffice,
+    });
     location.pincode = pincodeDetails.pincode;
     location.district = pincodeDetails.district || location.district;
     location.state = pincodeDetails.state || location.state;
@@ -564,7 +583,7 @@ const validateLocationConsistency = (location, ids) => {
 };
 
 const searchLaboursService = async ({
-  stateId, districtId, pincodeId, postOfficeId, pincode, district,
+  stateId, districtId, pincodeId, postOfficeId, state, pincode, district, postOffice,
   skill, category, search, isAvailable, isVerified, verificationStatus, phone,
   page = 1, limit = 4, showAll = false,
 }) => {
@@ -573,7 +592,10 @@ const searchLaboursService = async ({
   const pageLimit = Math.min(Math.max(Number(limit) || 4, 1), maxLimit);
   const offset = (pageNumber - 1) * pageLimit;
 
-  const location = await resolveSearchLocation({ stateId, districtId, pincodeId, postOfficeId, pincode, district });
+  const location = await resolveSearchLocation({
+    stateId, districtId, pincodeId, postOfficeId,
+    state, pincode, district, postOffice,
+  });
 
   // If a pincodeId is provided, always trust the master lookup so the search
   // stays on one exact locality bucket instead of mixing nearby areas.
@@ -639,7 +661,7 @@ const searchLaboursService = async ({
       { phone: { [Op.iLike]: `%${searchQuery}%` } },
     ];
   }
-  const hasUserFilter = Object.keys(userLocationWhere).length > 0;
+  const hasUserFilter = Reflect.ownKeys(userLocationWhere).length > 0;
 
   const userInclude = {
     model: User,
@@ -695,7 +717,7 @@ const searchLaboursService = async ({
   // Progressive count queries for funnel stats (state → district → pincode → postOffice)
   const makeCountInclude = (locOverride) => {
     const w = buildUserLocationWhere(locOverride, { stateId, districtId, pincodeId, postOfficeId });
-    if (!Object.keys(w).length) return [];
+    if (!Reflect.ownKeys(w).length) return [];
     return [{ model: User, as: "user", required: true, attributes: [], where: w }];
   };
 
